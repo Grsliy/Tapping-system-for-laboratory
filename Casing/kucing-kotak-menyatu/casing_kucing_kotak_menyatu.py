@@ -164,11 +164,7 @@ for lx, ly in LEDS:
     deco.append(ring(circle(4.6, lx, ly), 0.9))
 for d in deco:
     lid -= prism(d, LID - ENGRAVE, LID + 1)
-# dudukan di balik tutup
-f = ring(rect(60.6 + 2.4, 40.6 + 2.4, *RFID_C), 1.2) - rect(8, 30, RFID_C[0] + 31, RFID_C[1])
-lid += prism(f, -4, 0.01)
-oled_frame = ring(rect(27.7 + 2.4, 28.2 + 2.4, *OLED_C), 1.2) - rect(14, 6, OLED_C[0], OLED_C[1] + 14.5)
-lid += prism(oled_frame, -4, 0.01)
+# tabung LED di balik tutup; RC522 dan OLED ditempel langsung ke balik tutup tanpa dinding dudukan
 for lx, ly in LEDS:
     lid += prism(ring(circle(4.2, lx, ly), 1.6), -4, 0.01)   # pendek: colokan USB lewat di bawahnya
 
