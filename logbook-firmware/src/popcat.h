@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 // Popcat 2 frame (mulut tertutup, terbuka) untuk layar kartu belum terdaftar, 1-bit.
-// Dikonversi dari GIF popcat transparan: bagian gelap (garis tepi, mata, mulut) jadi
+// Dikonversi dari Referensi/popcat.gif: bagian gelap (garis tepi, mata, mulut) jadi
 // putih di OLED. Format baris demi baris, MSB kiri (format drawBitmap Adafruit GFX).
 #define POPCAT_WIDTH  60
 #define POPCAT_HEIGHT 60
