@@ -3,7 +3,8 @@
 Badan kucing memakai model "Cute Cat Phone Holder - Support Free" karya ABoyNamedSue
 (https://www.thingiverse.com/thing:7095121), lisensi Creative Commons Attribution-ShareAlike.
 Turunan ini mengikuti lisensi yang sama (CC BY-SA) dan wajib mencantumkan kredit tersebut bila
-dibagikan. Berkas aslinya ada di ../reference/.
+dibagikan. Berkas aslinya tidak disimpan di repo. Unduh Cat_Phone_Holder_Small_Head.stl dari
+halaman Thingiverse tersebut ke ../reference/files/ sebelum menjalankan script ini.
 
 Kucing diperbesar 1.5x, lalu bak kotak dipasang di punggungnya dengan kemiringan 20° (sisi depan
 rendah, dekat pengguna). Bagian kucing yang menembus bak dipotong, jadi kucing dan bak menjadi satu
