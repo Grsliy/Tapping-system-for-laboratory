@@ -29,35 +29,50 @@ bagian 5–6 adalah proses harian yang berulang tiap pengunjung datang.
 
 ## Arsitektur sistem
 
+**Revisi (7 Sept 2026):** awalnya dirancang dua chip terpisah (STM32 + ESP-01 dikontrol AT
+command), diganti jadi **satu chip Wemos D1 Mini (ESP8266)** yang urus SPI ke MFRC522
+sekaligus WiFi+HTTP-nya sendiri. Alasan penggantian ada di bagian "Keputusan arsitektur"
+di bawah.
+
 ```
 [Kartu RFID pengunjung]
         |  (tap)
         v
-[MFRC522] --SPI--> [STM32F401CCU6 (Black Pill)] --UART--> [ESP8266/ESP32]
-                                                                  |  (WiFi, HTTP)
-                                                                  v
-                                                          [Server + Database]
-                                                                  ^
-                                                                  |
-                                                        [Form online pendaftaran]
+[MFRC522] --SPI--> [Wemos D1 Mini (ESP8266)]
+                            |  (WiFi, HTTP)
+                            v
+                    [Server + Database]
+                            ^
+                            |
+                  [Form online pendaftaran]
 ```
 
-- **MFRC522** — baca UID kartu, dihubungkan ke STM32 lewat SPI (setup ini sudah dikerjakan
-  dan diuji, lihat catatan status di bawah).
-- **STM32F401CCU6** — baca UID dari MFRC522, kirim ke ESP lewat UART setiap ada tap.
-- **ESP8266/ESP32** — terima UID dari STM32 lewat UART, teruskan ke server lewat WiFi
-  (HTTP POST ke endpoint API, payload JSON berisi UID + timestamp).
-- **Server + Database** — terima data dari ESP, simpan sebagai log kunjungan. Juga jadi
-  tempat data hasil form online pendaftaran disimpan (untuk dicocokkan dengan UID).
+- **MFRC522** — baca UID kartu, dihubungkan ke Wemos D1 lewat SPI. Logika baca register/UID
+  (`Request`/`Anticoll`) sudah pernah ditulis & diuji versi STM32-nya, tinggal diporting ke
+  Arduino (SPI API beda, logika protokolnya sama).
+- **Wemos D1 Mini** — satu chip yang urus semuanya: baca UID dari MFRC522, connect WiFi
+  (termasuk WPA2-Enterprise/eduroam kalau itu jaringan yang dipakai), kirim HTTP POST
+  langsung ke server tiap ada tap. Tidak ada lagi perantara AT command/UART ke modul WiFi
+  terpisah.
+- **Server + Database** — terima data dari Wemos D1, simpan sebagai log kunjungan. Juga jadi
+  tempat data hasil form online pendaftaran disimpan (untuk dicocokkan dengan UID). Bagian
+  ini **tidak berubah sama sekali** dari rancangan awal — sepenuhnya platform-agnostic.
 - **Form online pendaftaran** — tempat data pengunjung (nama, institusi, tujuan) diinput
   sebelum kartu bisa dipakai tap.
 
 ## Keputusan arsitektur yang sudah diambil
 
-- **Modul WiFi: ESP-01**, dipakai dengan **firmware AT bawaan** (bukan flash firmware custom).
-  STM32 tetap jadi "otak" utama, ESP-01 cuma diperintah lewat AT command via UART untuk
-  connect WiFi dan kirim HTTP request. STM32 dan ESP-01 sendiri tidak pernah tahu siapa yang
-  terdaftar — mereka cuma kurir, seluruh logika pencocokan UID ada di server.
+- **Mikon utama: Wemos D1 Mini (ESP8266)**, menggantikan rencana awal STM32F401 (Black Pill)
+  + ESP-01 terpisah. Alasan penggantian: WiFi lab yang tersedia ada yang **eduroam
+  (WPA2-Enterprise/802.1X)** dan ada yang **captive portal (login browser)** — dua-duanya
+  tidak didukung ESP-01 dengan firmware AT bawaan (AT+CWJAP cuma support WPA2-PSK biasa).
+  WPA2-Enterprise **bisa** ditangani lewat kode custom (library `ESP8266_WPA2_Enterprise`
+  atau native di ESP32), tapi itu artinya modul WiFi-nya harus jalanin logika sendiri, bukan
+  lagi cuma "modem AT" yang diperintah STM32 — jadi lebih masuk akal sekalian jadikan satu
+  chip. Captive portal tetap tidak bisa diotomatisasi di mikon manapun (butuh MAC whitelist
+  dari IT lab kalau itu yang dipakai).
+  Wemos D1 dan STM32/ESP-01 tidak pernah tahu siapa yang terdaftar — mereka cuma kurir,
+  seluruh logika pencocokan UID ada di server.
 - **Server: self-hosted di komputer lab yang selalu nyala**, bukan Google Sheets/cloud.
   Alasannya: menghindari kebutuhan HTTPS/SSL yang berat buat RAM kecil ESP-01 (endpoint
   Google Apps Script wajib HTTPS, sedangkan server lokal bisa diakses HTTP biasa di jaringan
@@ -96,16 +111,19 @@ Perlu minimal dua tabel:
 
 ## Status pengerjaan saat ini
 
-- ✅ Setup STM32F401CCU6 (Black Pill) + STM32CubeIDE, clock 84 MHz, SPI1 ke MFRC522, UART
-  buat debug lewat ST-Link — sudah jalan dan teruji.
-- ✅ Kode baca UID kartu (`MFRC522_Request` + `MFRC522_Anticoll`) sudah ditulis dan
-  strukturnya teruji lewat modul MFRC522 pertama.
+- ✅ **Fase 1 (server Flask + SQLite) selesai dan teruji sepenuhnya** — endpoint `/tap` dan
+  `/log` jalan, diverifikasi bisa diakses dari perangkat lain di jaringan lab (firewall bukan
+  penghalang). Bagian ini tidak terpengaruh penggantian mikon di atas.
+- ✅ Kode baca UID kartu (`MFRC522_Request`/`MFRC522_Anticoll`) sudah pernah ditulis & teruji
+  strukturnya versi STM32 HAL — jadi referensi logika, perlu diporting ke Arduino/ESP8266.
+- ⚠️ **Setup STM32F401CCU6 (Black Pill) + STM32CubeIDE** (clock 84 MHz, SPI1, UART debug lewat
+  ST-Link) — sudah jalan dan teruji, tapi **tidak dipakai lagi untuk versi final** setelah
+  keputusan pindah ke Wemos D1 Mini. Tetap disimpan di repo sebagai referensi.
 - ❌ Modul MFRC522 pertama ternyata rusak di bagian antena (bagian digital/SPI-nya masih
   hidup, terbukti dari pembacaan Version Register yang konsisten, tapi tidak bisa
   mendeteksi kartu sama sekali). Sedang menunggu modul pengganti.
-- ⏳ Modul WiFi (ESP8266/ESP32) — belum mulai, nunggu modul RFID pengganti datang dulu
-  supaya bisa tes ujung ke ujung sekalian.
-- ⏳ Server, database, dan form online pendaftaran — belum mulai, masih tahap rancangan.
+- ⏳ Wemos D1 Mini — belum dibeli, belum mulai setup Arduino IDE.
+- ⏳ Form online pendaftaran — belum mulai, masih tahap rancangan.
 
 ## Hal yang belum diputuskan
 
@@ -116,8 +134,11 @@ Beberapa keputusan ini masih perlu ditentukan sebelum lanjut ke implementasi:
 - **Satu tap atau dua tap (masuk-keluar)** — saat ini diasumsikan cukup satu kali tap per
   kunjungan (cuma catat kehadiran), belum ada kebutuhan hitung durasi kunjungan. Bisa
   direvisi kalau ternyata dibutuhkan.
-- **Keamanan jaringan WiFi lab** — kredensial WiFi buat modul ESP perlu dipikirkan, apakah
-  pakai jaringan lab yang sudah ada atau jaringan terpisah khusus alat ini.
+- **Jaringan WiFi mana yang dipakai** — lab punya pilihan eduroam (WPA2-Enterprise) dan
+  captive portal (login browser). Rencananya pakai **eduroam** karena itu yang bisa
+  diotomatisasi lewat kode di Wemos D1 (captive portal tidak bisa tanpa bantuan IT). Perlu
+  kredensial eduroam yang dipakai device ini (username+password khusus device, atau punya
+  admin lab).
 - **Penanganan kartu tidak terdaftar** — apa yang terjadi kalau ada kartu di-tap tapi UID-nya
   tidak ada di tabel `pengunjung` (misal ditolak dengan indikator LED/buzzer, atau tetap
   dicatat sebagai "UID tidak dikenal" untuk ditindaklanjuti admin).
@@ -133,16 +154,17 @@ manual di PC) dan **tidak auto-register hostname ke DNS internal** (sudah dicoba
 jadi bukan itu masalahnya — murni soal IP-nya sendiri yang bisa berubah sewaktu-waktu.
 
 Solusi yang dipakai: **UDP Broadcast Discovery** — server broadcast IP-nya sendiri secara
-berkala ke jaringan lokal, ESP-01 dengerin buat tahu IP terkini, jadi tidak perlu reflash
-STM32 kalau IP PC lab berubah.
+berkala ke jaringan lokal, Wemos D1 dengerin buat tahu IP terkini, jadi tidak perlu reflash
+device kalau IP PC lab berubah. Ini tetap relevan walau mikon-nya sudah ganti ke Wemos D1 —
+soal IP dinamis ini murni karena kebijakan jaringan lab, bukan soal hardware yang dipakai.
 
 **Cara kerja:**
 ```
 1. PC lab (server) kirim paket UDP broadcast tiap ~5 detik ke 255.255.255.255:5001,
    isi pesan: "LOGBOOK_SERVER|<ip>|<port>"
-2. ESP-01 buka UDP listen mode, tangkap broadcast itu
-3. STM32 parsing pesan, simpan IP terbaru di memori
-4. Tiap ada tap kartu, STM32 pakai IP tersimpan itu buat HTTP POST ke server
+2. Wemos D1 buka UDP listen (WiFiUDP di Arduino), tangkap broadcast itu
+3. Parsing pesan, simpan IP terbaru di variabel
+4. Tiap ada tap kartu, pakai IP tersimpan itu buat HTTP POST ke server
 ```
 
 Detail teknis (buat referensi implementasi Fase 2 & 3):
@@ -171,42 +193,34 @@ Tidak butuh STM32/ESP-01/RFID sama sekali, murni dikerjakan di PC lab.
 4. Tes endpoint ini pakai Postman/`curl` dulu — kirim UID palsu manual, pastikan logikanya
    benar sebelum ada hardware yang terlibat sama sekali.
 
-### Fase 2 — ESP-01 connect ke server lokal
+### Fase 2 — Wemos D1 connect WiFi + HTTP ke server lokal
 
-Butuh ESP-01 + USB-TTL, belum butuh STM32/RFID.
+Butuh Wemos D1 Mini + kabel USB, belum butuh RFID.
 
-1. Tes `AT`, `AT+CWJAP` (connect WiFi).
-2. Tes `AT+CIPSTART="TCP","<IP PC lab>",<port>` + `AT+CIPSEND` kirim HTTP POST manual ke
-   endpoint Flask dari Fase 1 (pakai IP yang diketahui manual dulu, buat validasi jalur
-   HTTP-nya sendiri).
-3. Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim `LOGBOOK_SERVER|<ip>|<port>`
+1. Setup Arduino IDE + board package ESP8266 (`Additional Board Manager URLs`, install
+   "esp8266 by ESP8266 Community").
+2. Tes koneksi WiFi dasar dulu pakai hotspot HP (WPA2-PSK biasa) — validasi board sehat
+   sebelum coba yang lebih rumit (eduroam).
+3. Kalau WiFi hotspot berhasil, lanjut coba **eduroam** pakai library
+   `ESP8266_WPA2_Enterprise` (isi identity/username/password eduroam kampus).
+4. Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim `LOGBOOK_SERVER|<ip>|<port>`
    tiap ~5 detik ke `255.255.255.255:5001`).
-4. Tes ESP-01 buka UDP listen (`AT+CIPSTART="UDP","0.0.0.0",5001,...`) dan berhasil menangkap
-   pesan broadcast itu lewat `+IPD`.
-5. Pastikan data dummy sampai dan tercatat di database lewat IP yang didapat dari discovery
-   (bukan IP hardcoded lagi) — isolasi masalah jaringan/HTTP/discovery dari masalah kode
-   STM32 nanti.
+5. Tulis kode Wemos D1 buat dengerin broadcast itu (`WiFiUDP`), parsing dapat IP server.
+6. Tes kirim HTTP POST (`ESP8266HTTPClient`) berisi UID dummy ke endpoint `/tap` pakai IP
+   hasil discovery — pastikan data sampai dan tercatat di database.
 
-### Fase 3 — Integrasi STM32 + ESP-01
+### Fase 3 — (digabung ke Fase 2)
 
-Butuh STM32 Black Pill + ESP-01 disambung bareng.
-
-1. Sambungkan ESP-01 ke UART kedua STM32 (USART2, PA2/PA3 — supaya tidak rebutan sama
-   UART1 yang dipakai debug/serial monitor).
-2. Port kode AT command dari modul praktikum IoT lama, ganti bagian MQTT jadi HTTP POST
-   ke server lokal.
-3. Implementasikan logika discovery di STM32: dengarkan broadcast UDP dari Fase 2 saat boot
-   (dan idealnya di-refresh berkala), simpan IP server terbaru di variabel, pakai variabel
-   itu (bukan string IP tetap) tiap bikin `AT+CIPSTART` buat kirim tap.
-4. Tes kirim UID dummy yang di-hardcode dulu di kode STM32 (belum pakai RFID beneran) —
-   pastikan data sampai ke server lewat jalur lengkap STM32 → ESP-01 (discovery + HTTP) →
-   server.
+Karena sekarang cuma satu chip (bukan STM32 + ESP-01 terpisah), tidak ada lagi tahap
+"integrasi dua device" yang berdiri sendiri — semua logika WiFi+HTTP+discovery sudah
+menyatu di kode Fase 2. Fase ini dilewati.
 
 ### Fase 4 — Integrasi RFID (setelah modul pengganti datang)
 
-1. Gabungkan kode `MFRC522_Request`/`MFRC522_Anticoll` yang sudah dibuat & teruji sebelumnya
-   dengan pipeline dari Fase 3.
-2. Tiap tap kartu sukses → UID asli (bukan dummy lagi) dikirim ke server.
+1. Port kode `MFRC522_Request`/`MFRC522_Anticoll` dari versi STM32 HAL ke Arduino (`SPI.h`
+   bawaan Arduino, logika protokolnya sama, cuma API SPI-nya beda).
+2. Gabungkan dengan kode WiFi+HTTP dari Fase 2.
+3. Tiap tap kartu sukses → UID asli (bukan dummy lagi) dikirim ke server.
 
 ### Fase 5 — Fitur pendukung admin
 
@@ -217,4 +231,5 @@ Butuh STM32 Black Pill + ESP-01 disambung bareng.
 ### Fase 6 — Keandalan jangka panjang
 
 1. Set Flask auto-start di PC lab (Task Scheduler Windows).
-2. Reservasi IP statis PC lab di router lab.
+2. ~~Reservasi IP statis PC lab di router lab~~ — tidak memungkinkan (jaringan lab tidak
+   mengizinkan), sudah digantikan mekanisme UDP Broadcast Discovery di Fase 2.
