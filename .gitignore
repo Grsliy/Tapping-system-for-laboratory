@@ -1,0 +1,11 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Database lokal (data uji/hasil tap, bukan bagian dari kode)
+*.db
+
+# STM32CubeIDE
+Debug/
+Release/
