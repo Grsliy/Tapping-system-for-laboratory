@@ -124,21 +124,36 @@ Beberapa keputusan ini masih perlu ditentukan sebelum lanjut ke implementasi:
 - **Keandalan server lokal** — aplikasi Flask-nya perlu auto-start kalau PC itu pernah
   restart (lihat Fase 6 di roadmap).
 
-## Catatan soal IP server (penting buat maintenance)
+## Catatan soal IP server yang tidak statis
 
 Jaringan lab **tidak mengizinkan IP statis** (baik reservasi DHCP di router maupun setting
 manual di PC) dan **tidak auto-register hostname ke DNS internal** (sudah dicoba, hasil
-`Test-NetConnection -ComputerName "DESKTOP-REC5G8C"` gagal resolve). Jadi IP server
-**di-hardcode langsung** di kode STM32/ESP-01, dengan konsekuensi:
+`Test-NetConnection -ComputerName "DESKTOP-REC5G8C"` gagal resolve). Windows Firewall PC lab
+**sudah mengizinkan port 5000** (terverifikasi jalan dari perangkat lain di jaringan yang sama),
+jadi bukan itu masalahnya — murni soal IP-nya sendiri yang bisa berubah sewaktu-waktu.
 
-- IP server saat ini (per 7 Sept 2026): **`10.42.17.248`**, port **`5000`**, hostname PC:
-  `DESKTOP-REC5G8C`.
-- **Kalau sistem tap-in tiba-tiba berhenti berfungsi**, langkah pertama yang perlu dicek:
-  jalankan `ipconfig` di PC lab, bandingkan dengan IP yang ter-hardcode di kode STM32 — kalau
-  beda, update nilainya di kode dan reflash STM32.
-- Windows Firewall di PC lab **sudah mengizinkan port 5000** (baik lewat popup otomatis saat
-  `app.py` pertama kali dijalankan, atau memang default permisif di profil jaringan Private) —
-  sudah diverifikasi jalan dari perangkat lain di jaringan yang sama.
+Solusi yang dipakai: **UDP Broadcast Discovery** — server broadcast IP-nya sendiri secara
+berkala ke jaringan lokal, ESP-01 dengerin buat tahu IP terkini, jadi tidak perlu reflash
+STM32 kalau IP PC lab berubah.
+
+**Cara kerja:**
+```
+1. PC lab (server) kirim paket UDP broadcast tiap ~5 detik ke 255.255.255.255:5001,
+   isi pesan: "LOGBOOK_SERVER|<ip>|<port>"
+2. ESP-01 buka UDP listen mode, tangkap broadcast itu
+3. STM32 parsing pesan, simpan IP terbaru di memori
+4. Tiap ada tap kartu, STM32 pakai IP tersimpan itu buat HTTP POST ke server
+```
+
+Detail teknis (buat referensi implementasi Fase 2 & 3):
+- Port UDP broadcast: **5001** (beda dari port HTTP 5000, supaya tidak tercampur)
+- Interval broadcast: **~5 detik**
+- Format pesan: teks polos `LOGBOOK_SERVER|<ip>|<port>` — IP didapat server lewat trik socket
+  (`connect` ke alamat luar tanpa kirim data, baca `getsockname()`), bukan dari
+  `hostname`/`gethostbyname` yang bisa tidak akurat di PC dengan banyak network adapter.
+- IP server saat pengujian awal (7 Sept 2026): `10.42.17.248`, hostname PC: `DESKTOP-REC5G8C`
+  — dicatat buat referensi, tapi tidak lagi jadi satu-satunya sumber kebenaran karena sudah
+  ada mekanisme discovery otomatis.
 
 ## Roadmap implementasi
 
@@ -162,9 +177,15 @@ Butuh ESP-01 + USB-TTL, belum butuh STM32/RFID.
 
 1. Tes `AT`, `AT+CWJAP` (connect WiFi).
 2. Tes `AT+CIPSTART="TCP","<IP PC lab>",<port>` + `AT+CIPSEND` kirim HTTP POST manual ke
-   endpoint Flask dari Fase 1.
-3. Pastikan data dummy itu sampai dan tercatat di database — isolasi masalah jaringan/HTTP
-   dari masalah kode STM32 nanti.
+   endpoint Flask dari Fase 1 (pakai IP yang diketahui manual dulu, buat validasi jalur
+   HTTP-nya sendiri).
+3. Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim `LOGBOOK_SERVER|<ip>|<port>`
+   tiap ~5 detik ke `255.255.255.255:5001`).
+4. Tes ESP-01 buka UDP listen (`AT+CIPSTART="UDP","0.0.0.0",5001,...`) dan berhasil menangkap
+   pesan broadcast itu lewat `+IPD`.
+5. Pastikan data dummy sampai dan tercatat di database lewat IP yang didapat dari discovery
+   (bukan IP hardcoded lagi) — isolasi masalah jaringan/HTTP/discovery dari masalah kode
+   STM32 nanti.
 
 ### Fase 3 — Integrasi STM32 + ESP-01
 
@@ -174,8 +195,12 @@ Butuh STM32 Black Pill + ESP-01 disambung bareng.
    UART1 yang dipakai debug/serial monitor).
 2. Port kode AT command dari modul praktikum IoT lama, ganti bagian MQTT jadi HTTP POST
    ke server lokal.
-3. Tes kirim UID dummy yang di-hardcode dulu di kode STM32 (belum pakai RFID beneran) —
-   pastikan data sampai ke server lewat jalur lengkap STM32 → ESP-01 → server.
+3. Implementasikan logika discovery di STM32: dengarkan broadcast UDP dari Fase 2 saat boot
+   (dan idealnya di-refresh berkala), simpan IP server terbaru di variabel, pakai variabel
+   itu (bukan string IP tetap) tiap bikin `AT+CIPSTART` buat kirim tap.
+4. Tes kirim UID dummy yang di-hardcode dulu di kode STM32 (belum pakai RFID beneran) —
+   pastikan data sampai ke server lewat jalur lengkap STM32 → ESP-01 (discovery + HTTP) →
+   server.
 
 ### Fase 4 — Integrasi RFID (setelah modul pengganti datang)
 
