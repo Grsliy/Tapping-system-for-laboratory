@@ -122,7 +122,10 @@ Perlu minimal dua tabel:
 - ❌ Modul MFRC522 pertama ternyata rusak di bagian antena (bagian digital/SPI-nya masih
   hidup, terbukti dari pembacaan Version Register yang konsisten, tapi tidak bisa
   mendeteksi kartu sama sekali). Sedang menunggu modul pengganti.
-- ⏳ Wemos D1 Mini — belum dibeli, belum mulai setup Arduino IDE.
+- ✅ Project PlatformIO (`wemos-firmware/`) sudah disetup, skeleton kode WiFi+discovery+HTTP
+  sudah ditulis dan **build-nya tervalidasi sukses** — tapi Wemos D1 Mini fisiknya **belum
+  dibeli**, jadi belum bisa diupload/dites di board sungguhan.
+- ⏳ Broadcaster UDP di sisi server (`app.py`) — belum ditulis.
 - ⏳ Form online pendaftaran — belum mulai, masih tahap rancangan.
 
 ## Hal yang belum diputuskan
@@ -182,32 +185,35 @@ Detail teknis (buat referensi implementasi Fase 2 & 3):
 Diurutkan dari yang tidak butuh hardware sama sekali sampai yang butuh modul RFID pengganti.
 Fase 1 bisa mulai dikerjakan sekarang juga, tidak perlu menunggu apa-apa.
 
-### Fase 1 — Backend server
+### Fase 1 — Backend server ✅ SELESAI
 
 Tidak butuh STM32/ESP-01/RFID sama sekali, murni dikerjakan di PC lab.
 
-1. Setup project Flask sederhana.
-2. Buat skema database SQLite — tabel `pengunjung` dan `log_kunjungan` (lihat di atas).
-3. Buat endpoint API, misal `POST /tap`, yang menerima UID + waktu, mencocokkan ke tabel
-   `pengunjung`, mencatat ke `log_kunjungan` kalau cocok, membalas status `OK`/`REJECTED`.
-4. Tes endpoint ini pakai Postman/`curl` dulu — kirim UID palsu manual, pastikan logikanya
-   benar sebelum ada hardware yang terlibat sama sekali.
+- [x] Setup project Flask sederhana.
+- [x] Buat skema database SQLite — tabel `pengunjung` dan `log_kunjungan` (lihat di atas).
+- [x] Buat endpoint API, misal `POST /tap`, yang menerima UID + waktu, mencocokkan ke tabel
+      `pengunjung`, mencatat ke `log_kunjungan` kalau cocok, membalas status `OK`/`REJECTED`.
+- [x] Tes endpoint ini pakai `curl`/`Invoke-RestMethod` — sudah diverifikasi jalan, termasuk
+      diakses dari perangkat lain di jaringan lab (bukan cuma localhost).
 
-### Fase 2 — Wemos D1 connect WiFi + HTTP ke server lokal
+### Fase 2 — Wemos D1 connect WiFi + HTTP ke server lokal ⏳ SEBAGIAN
 
-Butuh Wemos D1 Mini + kabel USB, belum butuh RFID.
+Butuh Wemos D1 Mini + kabel USB buat langkah yang butuh hardware fisik.
 
-1. Setup Arduino IDE + board package ESP8266 (`Additional Board Manager URLs`, install
-   "esp8266 by ESP8266 Community").
-2. Tes koneksi WiFi dasar dulu pakai hotspot HP (WPA2-PSK biasa) — validasi board sehat
-   sebelum coba yang lebih rumit (eduroam).
-3. Kalau WiFi hotspot berhasil, lanjut coba **eduroam** pakai library
-   `ESP8266_WPA2_Enterprise` (isi identity/username/password eduroam kampus).
-4. Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim `LOGBOOK_SERVER|<ip>|<port>`
-   tiap ~5 detik ke `255.255.255.255:5001`).
-5. Tulis kode Wemos D1 buat dengerin broadcast itu (`WiFiUDP`), parsing dapat IP server.
-6. Tes kirim HTTP POST (`ESP8266HTTPClient`) berisi UID dummy ke endpoint `/tap` pakai IP
-   hasil discovery — pastikan data sampai dan tercatat di database.
+- [x] Setup **PlatformIO** (bukan Arduino IDE — diganti karena sudah kerja di VS Code/
+      Antigravity) — project `wemos-firmware/`, board `d1_mini`, framework Arduino.
+- [x] Tulis skeleton kode (`main.cpp`): WiFi connect, UDP discovery listener, HTTP POST
+      `/tap`, semua sudah **tervalidasi build sukses** (RAM 34.7%, Flash 26.1%) — walau
+      belum diupload ke board fisik (belum ada boardnya).
+- [ ] Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim
+      `LOGBOOK_SERVER|<ip>|<port>` tiap ~5 detik ke `255.255.255.255:5001`) — **belum
+      dikerjakan**, ini di sisi server, bisa dikerjakan sekarang tanpa nunggu board.
+- [ ] Tes koneksi WiFi dasar pakai hotspot HP (WPA2-PSK biasa) — **butuh board fisik**,
+      belum bisa dites.
+- [ ] Tes **eduroam** pakai `<wpa2_enterprise.h>` bawaan framework — **butuh board fisik**
+      dan kredensial eduroam device.
+- [ ] Tes kirim HTTP POST UID dummy ke `/tap` pakai IP hasil discovery — **butuh board
+      fisik**.
 
 ### Fase 3 — (digabung ke Fase 2)
 
@@ -215,21 +221,22 @@ Karena sekarang cuma satu chip (bukan STM32 + ESP-01 terpisah), tidak ada lagi t
 "integrasi dua device" yang berdiri sendiri — semua logika WiFi+HTTP+discovery sudah
 menyatu di kode Fase 2. Fase ini dilewati.
 
-### Fase 4 — Integrasi RFID (setelah modul pengganti datang)
+### Fase 4 — Integrasi RFID (setelah modul pengganti datang) ⏳ BELUM MULAI
 
-1. Port kode `MFRC522_Request`/`MFRC522_Anticoll` dari versi STM32 HAL ke Arduino (`SPI.h`
-   bawaan Arduino, logika protokolnya sama, cuma API SPI-nya beda).
-2. Gabungkan dengan kode WiFi+HTTP dari Fase 2.
-3. Tiap tap kartu sukses → UID asli (bukan dummy lagi) dikirim ke server.
+- [ ] Port kode `MFRC522_Request`/`MFRC522_Anticoll` dari versi STM32 HAL ke Arduino
+      (`SPI.h` bawaan Arduino, logika protokolnya sama, cuma API SPI-nya beda).
+- [ ] Gabungkan dengan kode WiFi+HTTP dari Fase 2.
+- [ ] Tiap tap kartu sukses → UID asli (bukan dummy lagi) dikirim ke server.
 
-### Fase 5 — Fitur pendukung admin
+### Fase 5 — Fitur pendukung admin ⏳ BELUM MULAI
 
-1. Form pendaftaran online (cara admin lab masukkan pengunjung baru + UID kartunya ke
-   tabel `pengunjung`).
-2. Halaman sederhana buat admin lihat/cari riwayat `log_kunjungan`.
+- [ ] Form pendaftaran online (cara admin lab masukkan pengunjung baru + UID kartunya ke
+      tabel `pengunjung`).
+- [ ] Halaman sederhana buat admin lihat/cari riwayat `log_kunjungan`.
 
-### Fase 6 — Keandalan jangka panjang
+### Fase 6 — Keandalan jangka panjang ⏳ BELUM MULAI
 
-1. Set Flask auto-start di PC lab (Task Scheduler Windows).
-2. ~~Reservasi IP statis PC lab di router lab~~ — tidak memungkinkan (jaringan lab tidak
-   mengizinkan), sudah digantikan mekanisme UDP Broadcast Discovery di Fase 2.
+- [ ] Set Flask auto-start di PC lab (Task Scheduler Windows).
+- [x] ~~Reservasi IP statis PC lab di router lab~~ — tidak memungkinkan (jaringan lab tidak
+      mengizinkan), sudah digantikan mekanisme UDP Broadcast Discovery di Fase 2 (rencana
+      sudah final, implementasi broadcaster-nya sendiri masih di Fase 2 yang belum selesai).
