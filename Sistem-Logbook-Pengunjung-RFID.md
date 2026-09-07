@@ -121,8 +121,24 @@ Beberapa keputusan ini masih perlu ditentukan sebelum lanjut ke implementasi:
 - **Penanganan kartu tidak terdaftar** — apa yang terjadi kalau ada kartu di-tap tapi UID-nya
   tidak ada di tabel `pengunjung` (misal ditolak dengan indikator LED/buzzer, atau tetap
   dicatat sebagai "UID tidak dikenal" untuk ditindaklanjuti admin).
-- **Keandalan server lokal** — IP PC lab perlu direservasi statis di router, dan aplikasi
-  Flask-nya perlu auto-start kalau PC itu pernah restart (lihat Fase 6 di roadmap).
+- **Keandalan server lokal** — aplikasi Flask-nya perlu auto-start kalau PC itu pernah
+  restart (lihat Fase 6 di roadmap).
+
+## Catatan soal IP server (penting buat maintenance)
+
+Jaringan lab **tidak mengizinkan IP statis** (baik reservasi DHCP di router maupun setting
+manual di PC) dan **tidak auto-register hostname ke DNS internal** (sudah dicoba, hasil
+`Test-NetConnection -ComputerName "DESKTOP-REC5G8C"` gagal resolve). Jadi IP server
+**di-hardcode langsung** di kode STM32/ESP-01, dengan konsekuensi:
+
+- IP server saat ini (per 7 Sept 2026): **`10.42.17.248`**, port **`5000`**, hostname PC:
+  `DESKTOP-REC5G8C`.
+- **Kalau sistem tap-in tiba-tiba berhenti berfungsi**, langkah pertama yang perlu dicek:
+  jalankan `ipconfig` di PC lab, bandingkan dengan IP yang ter-hardcode di kode STM32 — kalau
+  beda, update nilainya di kode dan reflash STM32.
+- Windows Firewall di PC lab **sudah mengizinkan port 5000** (baik lewat popup otomatis saat
+  `app.py` pertama kali dijalankan, atau memang default permisif di profil jaringan Private) —
+  sudah diverifikasi jalan dari perangkat lain di jaringan yang sama.
 
 ## Roadmap implementasi
 
