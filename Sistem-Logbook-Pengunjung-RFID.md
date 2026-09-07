@@ -240,3 +240,41 @@ menyatu di kode Fase 2. Fase ini dilewati.
 - [x] ~~Reservasi IP statis PC lab di router lab~~ — tidak memungkinkan (jaringan lab tidak
       mengizinkan), sudah digantikan mekanisme UDP Broadcast Discovery di Fase 2 (rencana
       sudah final, implementasi broadcaster-nya sendiri masih di Fase 2 yang belum selesai).
+
+## Timeline 4 hari (target santai, ~1 jam/hari)
+
+Catatan jujur di depan: **Hari 2-4 sebagian bergantung kapan Wemos D1 Mini dan modul MFRC522
+pengganti sampai** — itu di luar kendali (soal pengiriman). Supaya 4 hari ini tetap produktif
+walau barang belum datang, tiap hari punya kerjaan cadangan yang tidak butuh hardware.
+
+**Hari 1 — Kerjaan software, tidak perlu hardware sama sekali (~1 jam)**
+- Tulis broadcaster UDP di `app.py` (~20 menit) — sisa satu-satunya item Fase 2 yang bisa
+  dikerjakan tanpa board fisik.
+- Tes broadcaster jalan pakai script Python simulasi sederhana (~15 menit).
+- Kalau belum dipesan, pesan Wemos D1 Mini + modul MFRC522 pengganti sekarang juga (~5 menit)
+  — supaya jam pengiriman mulai berjalan dari hari ini.
+- Mulai draft halaman form pendaftaran online: route Flask + template HTML dasar (~20 menit).
+
+**Hari 2 (~1 jam)**
+- *Kalau Wemos D1 sudah sampai:* upload skeleton `main.cpp` ke board, tes koneksi WiFi pakai
+  hotspot HP dulu (WPA2-PSK biasa, bukan eduroam) — validasi board sehat.
+- *Kalau belum sampai:* lanjut selesaikan form pendaftaran online + halaman admin lihat
+  riwayat `log_kunjungan` (Fase 5).
+
+**Hari 3 (~1 jam)**
+- *Kalau tes WiFi hotspot hari 2 berhasil:* lanjut coba **eduroam**, lalu tes UDP discovery
+  + kirim HTTP POST UID dummy ke server — validasi jalur end-to-end tanpa RFID dulu.
+- *Kalau masih nunggu barang:* setup Task Scheduler auto-start Flask di PC lab (Fase 6),
+  atau rapikan dokumentasi/README repo.
+
+**Hari 4 — Wrap-up (~1 jam)**
+- *Kalau modul MFRC522 pengganti sudah sampai dan Wemos D1 sudah tervalidasi:* port kode
+  `MFRC522_Request`/`MFRC522_Anticoll` ke Arduino, tes baca kartu asli sampai ke server.
+- *Kalau salah satu barang belum sampai:* itu wajar, bukan kegagalan timeline — tandai sisa
+  pekerjaan itu sebagai lanjutan di luar 4 hari ini, dan pastikan semua yang sudah dikerjakan
+  (broadcaster, form admin, auto-start) sudah ter-commit & ter-push rapi ke GitHub.
+
+Target di akhir hari ke-4: **sistem tap-in jalan end-to-end pakai UID dummy minimal**
+(bahkan kalau RFID fisik belum terintegrasi), plus fitur admin (form pendaftaran + lihat
+log) sudah ada. Integrasi RFID fisik boleh menyusul kapan pun modulnya siap, tanpa
+menghalangi bagian lain sistem untuk selesai lebih dulu.
