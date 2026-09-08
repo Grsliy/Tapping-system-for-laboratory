@@ -1,17 +1,12 @@
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
 #include <WiFiUdp.h>
+#include "esp_wpa2.h"
 
-// ===== Konfigurasi jaringan =====
-// TODO Fase 2: isi kalau pakai WiFi hotspot/PSK biasa buat tes awal
-const char *WIFI_SSID = "";
-const char *WIFI_PASSWORD = "";
-
-// TODO Fase 2: implementasi WPA2-Enterprise (eduroam) kalau tes hotspot sudah berhasil.
-// ESP8266 Arduino core punya akses ke fungsi SDK wifi_station_set_wpa2_enterprise_auth()
-// dkk lewat <wpa2_enterprise.h> -- perlu diverifikasi & diisi detailnya nanti pas sudah
-// pegang board fisik, supaya bisa langsung dites, bukan cuma nebak dari dokumentasi.
+#include "secrets.h"
+// File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
+// dan isi kredensial eduroam asli di situ sebelum build.
 
 // ===== Konfigurasi UDP Discovery =====
 const uint16_t DISCOVERY_PORT = 5001;
@@ -26,16 +21,41 @@ uint16_t serverPort = 5000;
 // pakai SPI.h bawaan Arduino (logika protokolnya sama, cuma API SPI-nya beda).
 
 void connectWiFi() {
-    Serial.print("Menyambungkan ke WiFi");
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.println("Menyambungkan ke eduroam (WPA2-Enterprise)...");
 
-    while (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect(true);
+    delay(200);
+    WiFi.mode(WIFI_STA);
+
+    // Bersihkan dulu kredensial enterprise lama sebelum set yang baru
+    esp_wifi_sta_wpa2_ent_clear_identity();
+    esp_wifi_sta_wpa2_ent_clear_username();
+    esp_wifi_sta_wpa2_ent_clear_password();
+    esp_wifi_sta_wpa2_ent_clear_ca_cert();
+
+    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EDUROAM_IDENTITY, strlen(EDUROAM_IDENTITY));
+    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EDUROAM_USERNAME, strlen(EDUROAM_USERNAME));
+    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EDUROAM_PASSWORD, strlen(EDUROAM_PASSWORD));
+
+    esp_wifi_sta_wpa2_ent_enable();
+    WiFi.begin(EDUROAM_SSID);
+
+    Serial.print("Menyambungkan");
+    int timeoutCount = 0;
+    while (WiFi.status() != WL_CONNECTED && timeoutCount < 60) {
         delay(500);
         Serial.print(".");
+        timeoutCount++;
+    }
+    Serial.println();
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.print("GAGAL connect ke eduroam (timeout 30 detik). Kode status WiFi.status(): ");
+        Serial.println(WiFi.status());
+        Serial.println("Arti kode: 0=IDLE 1=NO_SSID 3=CONNECTED 4=CONNECT_FAILED 5=CONNECTION_LOST 6=DISCONNECTED");
+        return;
     }
 
-    Serial.println();
     Serial.print("Terhubung, IP device: ");
     Serial.println(WiFi.localIP());
 

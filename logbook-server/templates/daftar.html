@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Pendaftaran Pengunjung</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 480px;
+            margin: 40px auto;
+            padding: 0 16px;
+            color: #222;
+        }
+        h1 { font-size: 1.4rem; }
+        label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.9rem; }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 4px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background: #1d4ed8; }
+        .pesan {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+        .pesan.sukses { background: #dcfce7; color: #166534; }
+        .pesan.error { background: #fee2e2; color: #991b1b; }
+        .catatan { font-size: 0.85rem; color: #666; margin-top: 24px; }
+    </style>
+</head>
+<body>
+    <h1>Pendaftaran Pengunjung Lab</h1>
+
+    {% if pesan %}
+    <div class="pesan {{ 'sukses' if sukses else 'error' }}">{{ pesan }}</div>
+    {% endif %}
+
+    <form method="POST">
+        <label for="uid_kartu">UID Kartu RFID</label>
+        <input type="text" id="uid_kartu" name="uid_kartu" required
+               placeholder="mis. 5AE4C955">
+
+        <label for="nama">Nama Pengunjung</label>
+        <input type="text" id="nama" name="nama" required>
+
+        <label for="institusi">Institusi / Asal</label>
+        <input type="text" id="institusi" name="institusi">
+
+        <label for="tujuan">Tujuan Kunjungan</label>
+        <input type="text" id="tujuan" name="tujuan">
+
+        <button type="submit">Daftarkan</button>
+    </form>
+
+    <p class="catatan">
+        Pastikan surat izin kunjungan sudah disetujui sebelum mendaftarkan UID kartu di sini.
+        Lihat riwayat kunjungan yang sudah tercatat di <a href="/log">/log</a>.
+    </p>
+</body>
+</html>

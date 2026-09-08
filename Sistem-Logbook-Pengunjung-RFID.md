@@ -30,31 +30,37 @@ bagian 5–6 adalah proses harian yang berulang tiap pengunjung datang.
 ## Arsitektur sistem
 
 **Revisi (7 Sept 2026):** awalnya dirancang dua chip terpisah (STM32 + ESP-01 dikontrol AT
-command), diganti jadi **satu chip Wemos D1 Mini (ESP8266)** yang urus SPI ke MFRC522
-sekaligus WiFi+HTTP-nya sendiri. Alasan penggantian ada di bagian "Keputusan arsitektur"
-di bawah.
+command), diganti jadi satu chip WiFi+mikon yang urus SPI ke MFRC522 sekaligus WiFi+HTTP-nya
+sendiri (percobaan pertama pakai Wemos D1 Mini/ESP8266).
+
+**Revisi (8 Sept 2026):** Wemos D1 Mini (ESP8266) ternyata **gagal konsisten connect ke
+eduroam** meski kredensial sudah terbukti benar (berhasil di Windows) — dugaan kuat karena
+SDK WPA2-Enterprise ESP8266 cuma support TLS 1.0, sedangkan RADIUS server eduroam kemungkinan
+sudah menonaktifkan versi TLS itu. Diganti ke **ESP32-C3**, yang punya dukungan
+WPA2-Enterprise jauh lebih matang (terverifikasi dari header SDK resmi: eksplisit mendukung
+PEAP-MSCHAPv2, metode yang sama dipakai eduroam kampus ini). Detail teknis ada di bagian
+"Keputusan arsitektur" di bawah.
 
 ```
 [Kartu RFID pengunjung]
         |  (tap)
         v
-[MFRC522] --SPI--> [Wemos D1 Mini (ESP8266)]
-                            |  (WiFi, HTTP)
-                            v
-                    [Server + Database]
-                            ^
-                            |
-                  [Form online pendaftaran]
+[MFRC522] --SPI--> [ESP32-C3]
+                        |  (WiFi eduroam, HTTP)
+                        v
+                [Server + Database]
+                        ^
+                        |
+              [Form online pendaftaran]
 ```
 
-- **MFRC522** — baca UID kartu, dihubungkan ke Wemos D1 lewat SPI. Logika baca register/UID
+- **MFRC522** — baca UID kartu, dihubungkan ke ESP32-C3 lewat SPI. Logika baca register/UID
   (`Request`/`Anticoll`) sudah pernah ditulis & diuji versi STM32-nya, tinggal diporting ke
   Arduino (SPI API beda, logika protokolnya sama).
-- **Wemos D1 Mini** — satu chip yang urus semuanya: baca UID dari MFRC522, connect WiFi
-  (termasuk WPA2-Enterprise/eduroam kalau itu jaringan yang dipakai), kirim HTTP POST
-  langsung ke server tiap ada tap. Tidak ada lagi perantara AT command/UART ke modul WiFi
-  terpisah.
-- **Server + Database** — terima data dari Wemos D1, simpan sebagai log kunjungan. Juga jadi
+- **ESP32-C3** — satu chip yang urus semuanya: baca UID dari MFRC522, connect WiFi eduroam
+  (WPA2-Enterprise), kirim HTTP POST langsung ke server tiap ada tap. Tidak ada perantara AT
+  command/UART ke modul WiFi terpisah.
+- **Server + Database** — terima data dari ESP32-C3, simpan sebagai log kunjungan. Juga jadi
   tempat data hasil form online pendaftaran disimpan (untuk dicocokkan dengan UID). Bagian
   ini **tidak berubah sama sekali** dari rancangan awal — sepenuhnya platform-agnostic.
 - **Form online pendaftaran** — tempat data pengunjung (nama, institusi, tujuan) diinput
@@ -62,17 +68,24 @@ di bawah.
 
 ## Keputusan arsitektur yang sudah diambil
 
-- **Mikon utama: Wemos D1 Mini (ESP8266)**, menggantikan rencana awal STM32F401 (Black Pill)
-  + ESP-01 terpisah. Alasan penggantian: WiFi lab yang tersedia ada yang **eduroam
-  (WPA2-Enterprise/802.1X)** dan ada yang **captive portal (login browser)** — dua-duanya
-  tidak didukung ESP-01 dengan firmware AT bawaan (AT+CWJAP cuma support WPA2-PSK biasa).
-  WPA2-Enterprise **bisa** ditangani lewat kode custom (library `ESP8266_WPA2_Enterprise`
-  atau native di ESP32), tapi itu artinya modul WiFi-nya harus jalanin logika sendiri, bukan
-  lagi cuma "modem AT" yang diperintah STM32 — jadi lebih masuk akal sekalian jadikan satu
-  chip. Captive portal tetap tidak bisa diotomatisasi di mikon manapun (butuh MAC whitelist
-  dari IT lab kalau itu yang dipakai).
-  Wemos D1 dan STM32/ESP-01 tidak pernah tahu siapa yang terdaftar — mereka cuma kurir,
-  seluruh logika pencocokan UID ada di server.
+- **Mikon utama: ESP32-C3**, menggantikan rencana awal STM32F401 (Black Pill) + ESP-01
+  terpisah, dan juga menggantikan percobaan pertama Wemos D1 Mini (ESP8266). Alasan awal
+  pindah dari STM32+ESP-01: WiFi lab yang tersedia ada yang **eduroam (WPA2-Enterprise/
+  802.1X)** dan ada yang **captive portal (login browser)** — dua-duanya tidak didukung ESP-01
+  dengan firmware AT bawaan (AT+CWJAP cuma support WPA2-PSK biasa), jadi modul WiFi-nya harus
+  jalanin logika sendiri (bukan cuma "modem AT"), makanya sekalian dijadikan satu chip.
+  Alasan pindah dari ESP8266 ke ESP32-C3: **ESP8266 gagal konsisten connect ke eduroam**
+  walau kredensial sudah terbukti benar (berhasil di Windows dengan identity/username/password
+  yang sama persis) — dugaan kuat karena SDK WPA2-Enterprise ESP8266 (`wpa2_enterprise.h`)
+  cuma support TLS 1.0, dan beberapa laporan komunitas ([esp8266/Arduino#3842](https://github.com/esp8266/Arduino/issues/3842))
+  menunjukkan implementasinya memang dikenal tidak stabil buat eduroam. ESP32-C3 pakai
+  `esp_wpa2.h`, SDK yang jauh lebih baru — header resminya eksplisit menyebut dukungan
+  **PEAP-MSCHAPv2** (metode yang sama dipakai eduroam kampus ini, dikonfirmasi dari dialog
+  autentikasi WiFi Windows).
+  Captive portal tetap tidak bisa diotomatisasi di mikon manapun (butuh MAC whitelist dari
+  IT lab kalau itu yang dipakai).
+  ESP32-C3 tidak pernah tahu siapa yang terdaftar — dia cuma kurir, seluruh logika pencocokan
+  UID ada di server.
 - **Server: self-hosted di komputer lab yang selalu nyala**, bukan Google Sheets/cloud.
   Alasannya: menghindari kebutuhan HTTPS/SSL yang berat buat RAM kecil ESP-01 (endpoint
   Google Apps Script wajib HTTPS, sedangkan server lokal bisa diakses HTTP biasa di jaringan
@@ -118,15 +131,24 @@ Perlu minimal dua tabel:
   strukturnya versi STM32 HAL — jadi referensi logika, perlu diporting ke Arduino/ESP8266.
 - ⚠️ **Setup STM32F401CCU6 (Black Pill) + STM32CubeIDE** (clock 84 MHz, SPI1, UART debug lewat
   ST-Link) — sudah jalan dan teruji, tapi **tidak dipakai lagi untuk versi final** setelah
-  keputusan pindah ke Wemos D1 Mini. Tetap disimpan di repo sebagai referensi.
+  keputusan pindah ke ESP32-C3. Tetap disimpan di repo sebagai referensi.
 - ❌ Modul MFRC522 pertama ternyata rusak di bagian antena (bagian digital/SPI-nya masih
   hidup, terbukti dari pembacaan Version Register yang konsisten, tapi tidak bisa
   mendeteksi kartu sama sekali). Sedang menunggu modul pengganti.
-- ✅ Project PlatformIO (`wemos-firmware/`) sudah disetup, skeleton kode WiFi+discovery+HTTP
-  sudah ditulis dan **build-nya tervalidasi sukses** — tapi Wemos D1 Mini fisiknya **belum
-  dibeli**, jadi belum bisa diupload/dites di board sungguhan.
-- ⏳ Broadcaster UDP di sisi server (`app.py`) — belum ditulis.
-- ⏳ Form online pendaftaran — belum mulai, masih tahap rancangan.
+- ⚠️ **Percobaan pertama pakai Wemos D1 Mini (ESP8266)** — build sukses, tapi **gagal
+  konsisten connect ke eduroam** walau kredensial terbukti benar. Diganti ke ESP32-C3
+  (lihat "Keputusan arsitektur"). Kode lama tidak disimpan sebagai environment terpisah,
+  cukup dicatat di sini dan riwayat git.
+- ✅ Project PlatformIO (`logbook-firmware/`) sudah disetup target **ESP32-C3**, skeleton kode
+  WiFi eduroam (WPA2-Enterprise via `esp_wpa2.h`) + UDP discovery + HTTP POST sudah ditulis
+  dan **build-nya tervalidasi sukses**. Kredensial eduroam sudah diisi di `secrets.h`
+  (gitignored). Board fisik sudah ada, **masih dalam proses debug koneksi eduroam** —
+  langkah upload+monitor sudah dicoba, belum berhasil connect penuh di percobaan terakhir.
+- ✅ Broadcaster UDP di sisi server (`app.py`) — ditulis dan **teruji** lewat
+  `test_discovery_listener.py` (script simulasi), pesan diterima benar & konsisten tiap
+  ~5 detik.
+- ✅ Form online pendaftaran (`/daftar`) — ditulis dan **teruji** (daftar baru, UID duplikat
+  ditolak, hasil pendaftaran langsung bisa dipakai tap).
 
 ## Hal yang belum diputuskan
 
@@ -137,11 +159,9 @@ Beberapa keputusan ini masih perlu ditentukan sebelum lanjut ke implementasi:
 - **Satu tap atau dua tap (masuk-keluar)** — saat ini diasumsikan cukup satu kali tap per
   kunjungan (cuma catat kehadiran), belum ada kebutuhan hitung durasi kunjungan. Bisa
   direvisi kalau ternyata dibutuhkan.
-- **Jaringan WiFi mana yang dipakai** — lab punya pilihan eduroam (WPA2-Enterprise) dan
-  captive portal (login browser). Rencananya pakai **eduroam** karena itu yang bisa
-  diotomatisasi lewat kode di Wemos D1 (captive portal tidak bisa tanpa bantuan IT). Perlu
-  kredensial eduroam yang dipakai device ini (username+password khusus device, atau punya
-  admin lab).
+- ~~**Jaringan WiFi mana yang dipakai**~~ — sudah diputuskan: **eduroam**, sudah ada
+  kredensial (username+password akun pribadi pengelola project). Sisa tantangan sekarang
+  murni teknis (debug koneksi di ESP32-C3), bukan lagi keputusan.
 - **Penanganan kartu tidak terdaftar** — apa yang terjadi kalau ada kartu di-tap tapi UID-nya
   tidak ada di tabel `pengunjung` (misal ditolak dengan indikator LED/buzzer, atau tetap
   dicatat sebagai "UID tidak dikenal" untuk ditindaklanjuti admin).
@@ -157,15 +177,16 @@ manual di PC) dan **tidak auto-register hostname ke DNS internal** (sudah dicoba
 jadi bukan itu masalahnya — murni soal IP-nya sendiri yang bisa berubah sewaktu-waktu.
 
 Solusi yang dipakai: **UDP Broadcast Discovery** — server broadcast IP-nya sendiri secara
-berkala ke jaringan lokal, Wemos D1 dengerin buat tahu IP terkini, jadi tidak perlu reflash
-device kalau IP PC lab berubah. Ini tetap relevan walau mikon-nya sudah ganti ke Wemos D1 —
-soal IP dinamis ini murni karena kebijakan jaringan lab, bukan soal hardware yang dipakai.
+berkala ke jaringan lokal, ESP32-C3 dengerin buat tahu IP terkini, jadi tidak perlu reflash
+device kalau IP PC lab berubah. Ini tetap relevan walau mikon-nya sudah ganti (dari Wemos D1
+ke ESP32-C3) — soal IP dinamis ini murni karena kebijakan jaringan lab, bukan soal hardware
+yang dipakai. **Broadcaster di sisi server sudah ditulis & teruji** (lihat status di atas).
 
 **Cara kerja:**
 ```
 1. PC lab (server) kirim paket UDP broadcast tiap ~5 detik ke 255.255.255.255:5001,
    isi pesan: "LOGBOOK_SERVER|<ip>|<port>"
-2. Wemos D1 buka UDP listen (WiFiUDP di Arduino), tangkap broadcast itu
+2. ESP32-C3 buka UDP listen (WiFiUDP di Arduino), tangkap broadcast itu
 3. Parsing pesan, simpan IP terbaru di variabel
 4. Tiap ada tap kartu, pakai IP tersimpan itu buat HTTP POST ke server
 ```
@@ -196,24 +217,27 @@ Tidak butuh STM32/ESP-01/RFID sama sekali, murni dikerjakan di PC lab.
 - [x] Tes endpoint ini pakai `curl`/`Invoke-RestMethod` — sudah diverifikasi jalan, termasuk
       diakses dari perangkat lain di jaringan lab (bukan cuma localhost).
 
-### Fase 2 — Wemos D1 connect WiFi + HTTP ke server lokal ⏳ SEBAGIAN
+### Fase 2 — ESP32-C3 connect WiFi + HTTP ke server lokal ⏳ SEBAGIAN
 
-Butuh Wemos D1 Mini + kabel USB buat langkah yang butuh hardware fisik.
+Butuh ESP32-C3 + kabel USB buat langkah yang butuh hardware fisik.
 
 - [x] Setup **PlatformIO** (bukan Arduino IDE — diganti karena sudah kerja di VS Code/
-      Antigravity) — project `wemos-firmware/`, board `d1_mini`, framework Arduino.
+      Antigravity) — project `logbook-firmware/`, board `esp32-c3-devkitm-1`, framework
+      Arduino.
 - [x] Tulis skeleton kode (`main.cpp`): WiFi connect, UDP discovery listener, HTTP POST
-      `/tap`, semua sudah **tervalidasi build sukses** (RAM 34.7%, Flash 26.1%) — walau
-      belum diupload ke board fisik (belum ada boardnya).
-- [ ] Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim
-      `LOGBOOK_SERVER|<ip>|<port>` tiap ~5 detik ke `255.255.255.255:5001`) — **belum
-      dikerjakan**, ini di sisi server, bisa dikerjakan sekarang tanpa nunggu board.
-- [ ] Tes koneksi WiFi dasar pakai hotspot HP (WPA2-PSK biasa) — **butuh board fisik**,
-      belum bisa dites.
-- [ ] Tes **eduroam** pakai `<wpa2_enterprise.h>` bawaan framework — **butuh board fisik**
-      dan kredensial eduroam device.
-- [ ] Tes kirim HTTP POST UID dummy ke `/tap` pakai IP hasil discovery — **butuh board
-      fisik**.
+      `/tap` — **tervalidasi build sukses**.
+- [x] Tambahkan broadcaster UDP di `app.py` (thread terpisah, kirim
+      `LOGBOOK_SERVER|<ip>|<port>` tiap ~5 detik ke `255.255.255.255:5001`) — **teruji**
+      lewat `test_discovery_listener.py` (script simulasi tanpa perlu board fisik), pesan
+      diterima benar & konsisten tiap ~5 detik.
+- [x] ~~Tes koneksi WiFi dasar pakai hotspot HP~~ — dilewati, langsung eksperimen eduroam
+      karena sudah di lokasi lab.
+- [ ] Tes **eduroam** — **percobaan pertama di Wemos D1/ESP8266 gagal** (dugaan batasan
+      TLS 1.0 SDK lama), pindah ke **ESP32-C3** pakai `esp_wpa2.h` (API terverifikasi
+      dari header resmi, eksplisit dukung PEAP-MSCHAPv2). Build sukses, kredensial sudah
+      diisi di `secrets.h`, **upload & tes koneksi masih berjalan/belum berhasil penuh**.
+- [ ] Tes kirim HTTP POST UID dummy ke `/tap` pakai IP hasil discovery — **butuh WiFi
+      eduroam berhasil connect dulu**.
 
 ### Fase 3 — (digabung ke Fase 2)
 
@@ -228,11 +252,13 @@ menyatu di kode Fase 2. Fase ini dilewati.
 - [ ] Gabungkan dengan kode WiFi+HTTP dari Fase 2.
 - [ ] Tiap tap kartu sukses → UID asli (bukan dummy lagi) dikirim ke server.
 
-### Fase 5 — Fitur pendukung admin ⏳ BELUM MULAI
+### Fase 5 — Fitur pendukung admin ⏳ SEBAGIAN
 
-- [ ] Form pendaftaran online (cara admin lab masukkan pengunjung baru + UID kartunya ke
-      tabel `pengunjung`).
-- [ ] Halaman sederhana buat admin lihat/cari riwayat `log_kunjungan`.
+- [x] Form pendaftaran online — endpoint `GET/POST /daftar`, template `daftar.html`.
+      Teruji: daftar baru berhasil, UID duplikat ditolak dengan pesan yang jelas, hasil
+      pendaftaran langsung bisa dipakai tap di `/tap`.
+- [ ] Halaman sederhana buat admin lihat/cari riwayat `log_kunjungan` — endpoint `/log`
+      sudah ada (balikin JSON mentah), tapi belum ada tampilan HTML yang enak dibaca.
 
 ### Fase 6 — Keandalan jangka panjang ⏳ BELUM MULAI
 
@@ -243,32 +269,34 @@ menyatu di kode Fase 2. Fase ini dilewati.
 
 ## Timeline 4 hari (target santai, ~1 jam/hari)
 
-Catatan jujur di depan: **Hari 2-4 sebagian bergantung kapan Wemos D1 Mini dan modul MFRC522
-pengganti sampai** — itu di luar kendali (soal pengiriman). Supaya 4 hari ini tetap produktif
-walau barang belum datang, tiap hari punya kerjaan cadangan yang tidak butuh hardware.
+Catatan jujur di depan: **Hari 2-4 sebagian bergantung kapan modul MFRC522 pengganti
+sampai** — itu di luar kendali (soal pengiriman). Supaya 4 hari ini tetap produktif walau
+barang belum datang, tiap hari punya kerjaan cadangan yang tidak butuh hardware. (Update:
+ternyata debug koneksi eduroam — termasuk ganti mikon dari Wemos D1 ke ESP32-C3 — memakan
+waktu lebih banyak dari estimasi awal, timeline ini jadi kurang akurat dibanding kenyataan.
+Dibiarkan apa adanya sebagai catatan, bukan diedit ulang seolah sudah pas dari awal.)
 
 **Hari 1 — Kerjaan software, tidak perlu hardware sama sekali (~1 jam)**
 - Tulis broadcaster UDP di `app.py` (~20 menit) — sisa satu-satunya item Fase 2 yang bisa
   dikerjakan tanpa board fisik.
 - Tes broadcaster jalan pakai script Python simulasi sederhana (~15 menit).
-- Kalau belum dipesan, pesan Wemos D1 Mini + modul MFRC522 pengganti sekarang juga (~5 menit)
-  — supaya jam pengiriman mulai berjalan dari hari ini.
+- Kalau belum dipesan, pesan modul WiFi+mikon dan modul MFRC522 pengganti sekarang juga
+  (~5 menit) — supaya jam pengiriman mulai berjalan dari hari ini.
 - Mulai draft halaman form pendaftaran online: route Flask + template HTML dasar (~20 menit).
 
 **Hari 2 (~1 jam)**
-- *Kalau Wemos D1 sudah sampai:* upload skeleton `main.cpp` ke board, tes koneksi WiFi pakai
-  hotspot HP dulu (WPA2-PSK biasa, bukan eduroam) — validasi board sehat.
+- *Kalau board sudah sampai:* upload skeleton `main.cpp` ke board, tes koneksi WiFi.
 - *Kalau belum sampai:* lanjut selesaikan form pendaftaran online + halaman admin lihat
   riwayat `log_kunjungan` (Fase 5).
 
 **Hari 3 (~1 jam)**
-- *Kalau tes WiFi hotspot hari 2 berhasil:* lanjut coba **eduroam**, lalu tes UDP discovery
+- *Kalau tes WiFi berhasil:* lanjut coba **eduroam**, lalu tes UDP discovery
   + kirim HTTP POST UID dummy ke server — validasi jalur end-to-end tanpa RFID dulu.
 - *Kalau masih nunggu barang:* setup Task Scheduler auto-start Flask di PC lab (Fase 6),
   atau rapikan dokumentasi/README repo.
 
 **Hari 4 — Wrap-up (~1 jam)**
-- *Kalau modul MFRC522 pengganti sudah sampai dan Wemos D1 sudah tervalidasi:* port kode
+- *Kalau modul MFRC522 pengganti sudah sampai dan ESP32-C3 sudah tervalidasi:* port kode
   `MFRC522_Request`/`MFRC522_Anticoll` ke Arduino, tes baca kartu asli sampai ke server.
 - *Kalau salah satu barang belum sampai:* itu wajar, bukan kegagalan timeline — tandai sisa
   pekerjaan itu sebagai lanjutan di luar 4 hari ini, dan pastikan semua yang sudah dikerjakan
