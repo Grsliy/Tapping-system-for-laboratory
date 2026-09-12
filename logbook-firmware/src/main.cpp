@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiUdp.h>
-#include "esp_wpa2.h"
 
 #include "secrets.h"
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
@@ -15,51 +14,57 @@ const char *DISCOVERY_PREFIX = "LOGBOOK_SERVER|";
 WiFiUDP udp;
 String serverIP = "";
 uint16_t serverPort = 5000;
+bool wifiReady = false;
+unsigned long lastStatusPrint = 0;
 
 // ===== Konfigurasi MFRC522 (diisi Fase 4, setelah modul RFID pengganti datang) =====
 // TODO Fase 4: port kode MFRC522_Request/MFRC522_Anticoll dari versi STM32 HAL ke sini,
 // pakai SPI.h bawaan Arduino (logika protokolnya sama, cuma API SPI-nya beda).
 
-void connectWiFi() {
+void startWiFi() {
     Serial.println("Menyambungkan ke eduroam (WPA2-Enterprise)...");
 
     WiFi.disconnect(true);
     delay(200);
     WiFi.mode(WIFI_STA);
 
-    // Bersihkan dulu kredensial enterprise lama sebelum set yang baru
-    esp_wifi_sta_wpa2_ent_clear_identity();
-    esp_wifi_sta_wpa2_ent_clear_username();
-    esp_wifi_sta_wpa2_ent_clear_password();
-    esp_wifi_sta_wpa2_ent_clear_ca_cert();
+    // Matikan WiFi power-save mode -- kalau aktif, ESP32 sempat "tidur" sebentar-sebentar
+    // dan bisa melewatkan paket 4-way handshake dari AP, bikin HANDSHAKE_TIMEOUT (reason 204).
+    WiFi.setSleep(false);
 
-    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EDUROAM_IDENTITY, strlen(EDUROAM_IDENTITY));
-    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EDUROAM_USERNAME, strlen(EDUROAM_USERNAME));
-    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EDUROAM_PASSWORD, strlen(EDUROAM_PASSWORD));
+    // API tingkat tinggi bawaan WiFiSTA -- bungkus semua setup enterprise (identity,
+    // username, password) jadi satu pemanggilan, sesuai contoh resmi Espressif
+    // (WiFiClientEnterprise.ino) supaya urutan internal-nya benar.
+    WiFi.begin(EDUROAM_SSID, WPA2_AUTH_PEAP, EDUROAM_IDENTITY, EDUROAM_USERNAME, EDUROAM_PASSWORD);
 
-    esp_wifi_sta_wpa2_ent_enable();
-    WiFi.begin(EDUROAM_SSID);
+    // Tidak nunggu blocking di sini -- driver WiFi ESP-IDF auto-retry sendiri di
+    // background ("WiFi Reconnect Running" di log). Status dipantau terus dari loop(),
+    // supaya kalau percobaan pertama gagal tapi percobaan berikutnya (otomatis) berhasil,
+    // tetap ketangkep, bukan cuma nyerah setelah satu window 30 detik.
+}
 
-    Serial.print("Menyambungkan");
-    int timeoutCount = 0;
-    while (WiFi.status() != WL_CONNECTED && timeoutCount < 60) {
-        delay(500);
-        Serial.print(".");
-        timeoutCount++;
+// Dipanggil terus tiap loop -- cek status WiFi, print perkembangan tiap 5 detik supaya
+// tidak membanjiri Serial Monitor, dan aktifkan UDP begitu pertama kali berhasil connect.
+void monitorWiFi() {
+    if (wifiReady) {
+        return;  // sudah connect sebelumnya, tidak perlu dicek ulang tiap loop
     }
-    Serial.println();
 
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.print("GAGAL connect ke eduroam (timeout 30 detik). Kode status WiFi.status(): ");
-        Serial.println(WiFi.status());
-        Serial.println("Arti kode: 0=IDLE 1=NO_SSID 3=CONNECTED 4=CONNECT_FAILED 5=CONNECTION_LOST 6=DISCONNECTED");
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("Terhubung! IP device: ");
+        Serial.println(WiFi.localIP());
+        udp.begin(DISCOVERY_PORT);
+        wifiReady = true;
         return;
     }
 
-    Serial.print("Terhubung, IP device: ");
-    Serial.println(WiFi.localIP());
-
-    udp.begin(DISCOVERY_PORT);
+    if (millis() - lastStatusPrint >= 5000) {
+        lastStatusPrint = millis();
+        Serial.print("[");
+        Serial.print(millis() / 1000);
+        Serial.print("s] Masih menunggu koneksi eduroam... status: ");
+        Serial.println(WiFi.status());
+    }
 }
 
 // Dengarkan broadcast UDP dari server, update serverIP kalau ada pesan baru masuk
@@ -134,11 +139,15 @@ bool sendTap(const String &uid) {
 void setup() {
     Serial.begin(115200);
     delay(100);
-    connectWiFi();
+    startWiFi();
 }
 
 void loop() {
-    checkServerDiscovery();
+    monitorWiFi();
+
+    if (wifiReady) {
+        checkServerDiscovery();
+    }
 
     // TODO Fase 2: ganti trigger ini jadi tombol/interval tes manual dulu,
     // TODO Fase 4: ganti jadi hasil baca kartu MFRC522 (bukan dummy lagi).
