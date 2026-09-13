@@ -41,35 +41,34 @@ asal ada internet.
 [Kartu RFID pengunjung]
         |  (tap)
         v
-[MFRC522] --SPI--> [ESP32 WROOM]
+[MFRC522] --SPI--> [ESP32-C3 SuperMini]
                         |  (WiFi + internet, HTTPS)
                         v
               [Google Apps Script (Web App)]
                         |
                         v
               [Google Sheet: Pengunjung + Log_Kunjungan]
-                        ^
-                        |
-              [Google Form: pendaftaran pengunjung]
 ```
+
+Pendaftaran pengunjung tidak lewat Form (lihat "Hal yang belum diputuskan" — sudah diganti
+isi manual langsung ke Sheet oleh admin).
 
 - **MFRC522** — baca UID kartu, dihubungkan ke ESP32 lewat SPI. Logika baca register/UID
   (`Request`/`Anticoll`) sudah pernah ditulis & diuji versi STM32-nya, tinggal diporting ke
   Arduino (SPI API beda, logika protokolnya sama).
-- **ESP32 WROOM** — satu chip yang urus semuanya: baca UID dari MFRC522, connect WiFi
+- **ESP32-C3 SuperMini** — satu chip yang urus semuanya: baca UID dari MFRC522, connect WiFi
   (rencana pakai **UGM-IoT**, WPA2-PSK biasa — lihat "Hal yang belum diputuskan"), kirim
   HTTPS POST ke Apps Script tiap ada tap.
 - **Google Apps Script** — terima UID dari ESP32, cocokkan ke Sheet `Pengunjung`, catat ke
   Sheet `Log_Kunjungan` kalau valid, balas status. Menggantikan peran server Flask yang
   sebelumnya dipakai.
-- **Google Sheet** — dua tab, `Pengunjung` (hasil pendaftaran) dan `Log_Kunjungan` (riwayat
-  tap). Admin bisa lihat/edit langsung lewat Sheet, tidak perlu halaman admin terpisah.
-- **Google Form** — tempat data pengunjung (nama, institusi, tujuan) diinput sebelum kartu
-  bisa dipakai tap, response otomatis masuk ke Sheet `Pengunjung`.
+- **Google Sheet** — dua tab, `Pengunjung` (diisi manual oleh admin) dan `Log_Kunjungan`
+  (riwayat tap). Admin bisa lihat/edit langsung lewat Sheet, tidak perlu halaman admin
+  terpisah.
 
 ## Riwayat keputusan mikon
 
-Perjalanan sampai ke ESP32 WROOM, disimpan supaya tidak mengulang percobaan yang sama:
+Perjalanan sampai ke ESP32-C3 SuperMini, disimpan supaya tidak mengulang percobaan yang sama:
 
 1. **STM32F401 (Black Pill) + ESP-01 terpisah** (rancangan awal) — ESP-01 dengan firmware
    AT bawaan cuma support WPA2-PSK biasa, sedangkan WiFi lab ada yang eduroam
@@ -94,10 +93,16 @@ Perjalanan sampai ke ESP32 WROOM, disimpan supaya tidak mengulang percobaan yang
    terhadap infrastruktur RADIUS eduroam kampus ini spesifik — didukung laporan serupa di
    [issue #5027](https://github.com/espressif/arduino-esp32/issues/5027) (berhasil di
    ESP-IDF murni, gagal di Arduino core).
+5. **Kembali ke ESP32-C3 SuperMini** (13 Sept 2026) — setelah keputusan berhenti mengejar
+   eduroam dan pindah ke WPA2-PSK biasa (UGM-IoT), alasan awal pindah ke WROOM (butuh
+   WPA2-Enterprise yang stabil) sudah tidak relevan. Brownout yang dulu terjadi di
+   SuperMini murni soal power supply saat pengujian, bukan cacat bawaan chip C3 — WPA2-PSK
+   tidak punya masalah stabilitas seperti eduroam di board manapun. Board lebih kompak dan
+   sudah dimiliki, dipakai lagi dengan syarat power supply yang memadai kali ini.
 
 **Keputusan:** berhenti mengejar eduroam, pindah ke jaringan **UGM-IoT** (WPA2-PSK biasa,
-kalau permohonan izin disetujui — lihat "Hal yang belum diputuskan"). ESP32 WROOM tetap
-dipakai sebagai mikon final — board-nya sudah terbukti sehat, cuma jaringannya yang diganti.
+kalau permohonan izin disetujui — lihat "Hal yang belum diputuskan"). Mikon final:
+**ESP32-C3 SuperMini**.
 
 ## Rancangan skema data (Google Sheet)
 
@@ -126,8 +131,11 @@ walau datanya di `Pengunjung` diedit belakangan.
 
 ## Status pengerjaan saat ini
 
-- ✅ **ESP32 WROOM tervalidasi sehat** — tidak ada lagi brownout/crash (masalah yang sempat
-  terjadi di ESP32-C3 SuperMini), build dan upload lewat PlatformIO berhasil.
+- ⚠️ **Kembali ke ESP32-C3 SuperMini** (dari ESP32 WROOM yang sempat tervalidasi sehat) —
+  alasan pindah ke WROOM (WPA2-Enterprise) sudah tidak relevan setelah eduroam ditinggalkan.
+  `platformio.ini` dan `main.cpp` sudah disiapkan ulang, **build tervalidasi sukses**, tapi
+  **belum diuji di board fisik** — perlu diperhatikan lagi soal power supply yang memadai
+  (pelajaran dari brownout sebelumnya).
 - ❌ **eduroam ditinggalkan** — sudah dicoba maksimal di 2 mikon (ESP8266, ESP32-C3/WROOM)
   dengan berbagai pendekatan, tetap tidak stabil. Lihat "Riwayat keputusan mikon" di atas.
 - ⏳ **Permohonan akses WiFi UGM-IoT** — sudah dikirim email ke pengelola jaringan
@@ -181,10 +189,14 @@ halaman terpisah. Langsung lanjut ke Hari 3.)*
 
 **Hari 3 — ESP32 connect WiFi + HTTPS ke Apps Script**
 *(Kalau UGM-IoT belum di-approve, pakai hotspot HP dulu buat validasi kode)*
-- [ ] Bersihkan `main.cpp`: hapus kode UDP discovery & eduroam (sudah tidak relevan), ganti
-      kredensial WiFi ke UGM-IoT atau hotspot sementara.
-- [ ] Tambah kode HTTPS POST ke URL Apps Script (`HTTPClient`/`WiFiClientSecure`).
-- [ ] Tes kirim UID dummy dari ESP32, pastikan tercatat di Sheet.
+- [x] Bersihkan `main.cpp`: hapus kode UDP discovery & eduroam (sudah tidak relevan), ganti
+      WiFi ke WPA2-PSK biasa (`WiFi.begin(ssid, password)`) — kredensial diisi saat upload
+      sesuai jaringan yang dipakai (UGM-IoT atau hotspot sementara).
+- [x] Tambah kode HTTPS POST ke URL Apps Script (`HTTPClient` + `WiFiClientSecure`,
+      `setInsecure()`). Build tervalidasi sukses di ESP32-C3.
+- [ ] Tes kirim UID dummy dari ESP32 fisik, pastikan tercatat di Sheet — **belum dijalankan
+      di board sungguhan**, kode sudah otomatis kirim UID dummy `DEADBEEF` sekali begitu
+      WiFi connect saat boot.
 
 **Hari 4 — Integrasi RFID**
 *(Butuh modul MFRC522 pengganti sudah di tangan)*

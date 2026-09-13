@@ -5,10 +5,10 @@ sudah terdaftar tinggal tap kartu RFID di pintu masuk, tanpa perlu isi buku tamu
 
 ## Arsitektur
 
-ESP32 WROOM membaca UID kartu lewat modul MFRC522, connect ke jaringan WiFi kampus, lalu
+ESP32 membaca UID kartu lewat modul MFRC522, connect ke jaringan WiFi kampus, lalu
 mengirim data tap ke Google Apps Script yang mencocokkan dan mencatatnya ke Google Sheet.
-Detail lengkap arsitektur, keputusan teknis, dan skema data ada di
-[Dokumen/Sistem-Logbook-Pengunjung-RFID](Dokumen/Sistem-Logbook-Pengunjung-RFID.md).
+Detail lengkap arsitektur, varian ESP32 yang dipakai, keputusan teknis, dan skema data ada
+di [Dokumen/Sistem-Logbook-Pengunjung-RFID](Dokumen/Sistem-Logbook-Pengunjung-RFID.md).
 
 ## Struktur folder
 
