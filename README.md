@@ -16,6 +16,8 @@ Detail lengkap arsitektur, keputusan teknis, dan skema data ada di
 - [Tutorial/](Tutorial/) — panduan langkah kerja per milestone, urut sesuai hari pengerjaan.
 - [Referensi/](Referensi/) — materi pendukung (modul praktikum IoT, datasheet, gambar pinout).
 - [logbook-firmware/](logbook-firmware/) — kode firmware ESP32 (PlatformIO, framework Arduino).
+- [logbook-appsscript/](logbook-appsscript/) — salinan lokal kode Google Apps Script (backend
+  yang jalan di Google, dipakai untuk riwayat/backup di luar Apps Script Editor).
 
 ## Status pengerjaan
 
