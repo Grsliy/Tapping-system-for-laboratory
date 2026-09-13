@@ -147,8 +147,9 @@ walau datanya di `Pengunjung` diedit belakangan.
 
 - **Balasan izin UGM-IoT dari departemen** — belum ada kepastian, dan mempengaruhi apakah
   Hari 3 di milestone bisa jalan sesuai rencana atau perlu jaringan sementara (hotspot HP).
-- **Siapa yang isi form pendaftaran** — admin lab yang input manual setelah memeriksa surat
-  izin, atau pengunjung sendiri yang isi (lalu admin tinggal approve)?
+- ~~**Siapa yang isi form pendaftaran**~~ — sudah diputuskan: **tidak pakai Form sama
+  sekali**. Admin isi manual langsung ke tab `Pengunjung` di Sheet setelah surat izin
+  disetujui. Google Form (Hari 2 di milestone lama) di-skip.
 - **Satu tap atau dua tap (masuk-keluar)** — saat ini diasumsikan cukup satu kali tap per
   kunjungan (cuma catat kehadiran), belum ada kebutuhan hitung durasi kunjungan.
 - **Penanganan kartu tidak terdaftar** — apa yang terjadi kalau ada kartu di-tap tapi UID-nya
@@ -172,11 +173,11 @@ bergantung hal di luar kendali (approval UGM-IoT, kedatangan modul RFID) — dit
       terkonfirmasi muncul di tab `Log_Kunjungan`. Detail di
       [Tutorial/Hari-1-Setup-Sheet-AppsScript.md](../Tutorial/Hari-1-Setup-Sheet-AppsScript.md).
 
-**Hari 2 — Pendaftaran & lihat riwayat**
-*(Lanjutan backend, masih tidak perlu hardware)*
-- [ ] Setup Google Form buat pendaftaran pengunjung, response otomatis masuk tab
-      `Pengunjung`.
-- [ ] Uji alur: isi Form → cek data masuk Sheet → tes tap dummy lagi lewat Apps Script.
+**Hari 2 — Pendaftaran & lihat riwayat** ⏭️ DI-SKIP
+*(Keputusan 13 Sept 2026: tidak pakai Google Form. Admin isi manual langsung ke tab
+`Pengunjung` di Sheet — lebih simpel buat skala pengunjung yang tidak terlalu banyak.
+Riwayat kunjungan juga cukup dilihat langsung dari tab `Log_Kunjungan`, tidak perlu
+halaman terpisah. Langsung lanjut ke Hari 3.)*
 
 **Hari 3 — ESP32 connect WiFi + HTTPS ke Apps Script**
 *(Kalau UGM-IoT belum di-approve, pakai hotspot HP dulu buat validasi kode)*
