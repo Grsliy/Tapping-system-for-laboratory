@@ -112,11 +112,16 @@ dipakai sebagai mikon final — board-nya sudah terbukti sehat, cuma jaringannya
 | `tanggal_daftar` | Kapan data ini dimasukkan ke sistem |
 | `status` | Aktif / nonaktif (buat nonaktifkan kartu setelah kunjungan selesai, kalau perlu) |
 
-**Tab `Log_Kunjungan`** — catatan tiap kali tap kartu
+**Tab `Log_Kunjungan`** — catatan tiap kali tap kartu. Nama dan tujuan ikut disalin dari
+`Pengunjung` di tiap baris (denormalisasi) supaya riwayat langsung kebaca tanpa perlu
+cross-reference manual ke tab lain, dan tetap merekam kondisi pengunjung saat tap itu terjadi
+walau datanya di `Pengunjung` diedit belakangan.
 
 | Kolom | Keterangan |
 |---|---|
 | `uid_kartu` | Merujuk ke `Pengunjung.uid_kartu` |
+| `nama` | Disalin dari `Pengunjung` saat tap terjadi |
+| `tujuan` | Disalin dari `Pengunjung` saat tap terjadi |
 | `waktu_tap` | Timestamp saat tap terjadi |
 
 ## Status pengerjaan saat ini
@@ -131,7 +136,8 @@ dipakai sebagai mikon final — board-nya sudah terbukti sehat, cuma jaringannya
   karena tidak perlu satu jaringan dengan server).
 - ❌ **`logbook-server/` (Flask + SQLite) dihapus** dari repo — arsitektur pindah ke Google
   Sheets + Apps Script, PC lab tidak lagi berperan sebagai server.
-- ⏳ **Google Sheet + Apps Script** — belum mulai dibuat.
+- ✅ **Google Sheet + Apps Script selesai dan teruji** — Hari 1 milestone tuntas, lihat
+  detail di bagian Milestone di bawah.
 - ⏳ **Modul MFRC522 pengganti** — status kedatangan perlu dicek ulang (terakhir tercatat
   masih menunggu pengiriman).
 - ✅ Kode baca UID kartu (`MFRC522_Request`/`MFRC522_Anticoll`) sudah pernah ditulis & teruji
@@ -154,13 +160,17 @@ dipakai sebagai mikon final — board-nya sudah terbukti sehat, cuma jaringannya
 Disusun 12 Sept 2026, setelah pivot ke Google Sheets + Apps Script. Beberapa hari
 bergantung hal di luar kendali (approval UGM-IoT, kedatangan modul RFID) — ditandai jelas.
 
-**Hari 1 — Backend: Google Sheet + Apps Script**
+**Hari 1 — Backend: Google Sheet + Apps Script** ✅ SELESAI
 *(Tidak perlu hardware, tidak perlu tunggu approval UGM-IoT)*
-- [ ] Buat Google Sheet, 2 tab: `Pengunjung` dan `Log_Kunjungan` (skema di atas).
-- [ ] Tulis Apps Script `doPost(e)`: terima UID, cocokkan ke tab `Pengunjung`, catat ke
-      `Log_Kunjungan` kalau valid, balas JSON status.
-- [ ] Deploy sebagai Web App, catat URL-nya.
-- [ ] Tes pakai `curl`/Postman dengan UID dummy sebelum ada hardware terlibat.
+- [x] Buat Google Sheet, 2 tab: `Pengunjung` dan `Log_Kunjungan` (skema di atas).
+- [x] Tulis Apps Script `doPost(e)`: terima UID, cocokkan ke tab `Pengunjung`, catat ke
+      `Log_Kunjungan` kalau valid, balas JSON status. Kode tersimpan di
+      [logbook-appsscript/Code.gs](../logbook-appsscript/Code.gs).
+- [x] Deploy sebagai Web App, catat URL-nya.
+- [x] Tes pakai PowerShell (`Invoke-RestMethod`) dengan UID dummy — terverifikasi 13 Sept
+      2026, `OK` untuk UID terdaftar, `REJECTED` untuk UID tidak dikenal, dan baris baru
+      terkonfirmasi muncul di tab `Log_Kunjungan`. Detail di
+      [Tutorial/Hari-1-Setup-Sheet-AppsScript.md](../Tutorial/Hari-1-Setup-Sheet-AppsScript.md).
 
 **Hari 2 — Pendaftaran & lihat riwayat**
 *(Lanjutan backend, masih tidak perlu hardware)*
