@@ -57,6 +57,10 @@ bool sendTap(const String &uid) {
     Serial.println("http.begin...");
     HTTPClient http;
     http.setTimeout(15000); // 15 detik, biar tidak hang selamanya kalau memang macet
+    // Apps Script Web App selalu balas 302 dulu (redirect ke domain googleusercontent.com
+    // tempat script-nya benar-benar jalan) -- tanpa ini, HTTPClient default berhenti di
+    // 302 dan tidak pernah lihat balasan JSON yang sebenarnya.
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     http.begin(client, APPS_SCRIPT_URL);
     http.addHeader("Content-Type", "application/json");
 
