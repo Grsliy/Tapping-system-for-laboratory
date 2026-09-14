@@ -83,6 +83,36 @@ void oledIdle() {
     oledShow("Please", 2, "tap", 2);
 }
 
+// Animasi titik saat menunggu balasan Apps Script. Dijalankan sebagai task terpisah
+// karena postJson/getContent memblokir loop() selama beberapa detik.
+volatile bool loadingRun = false;
+volatile bool loadingDone = true;
+
+void loadingTask(void *param) {
+    int dots = 1;
+    while (loadingRun) {
+        oledShow("Checking", 2, String("...").substring(0, dots), 2);
+        dots = (dots % 3) + 1;
+        for (int i = 0; i < 7 && loadingRun; i++) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+    loadingDone = true;
+    vTaskDelete(NULL);
+}
+
+void loadingStart() {
+    if (!loadingDone) return;
+    loadingRun = true;
+    loadingDone = false;
+    xTaskCreate(loadingTask, "loading", 4096, NULL, 1, NULL);
+}
+
+void loadingStop() {
+    loadingRun = false;
+    while (!loadingDone) delay(10);
+}
+
 void connectWiFi() {
     Serial.println("Menyambungkan ke WiFi...");
 
@@ -422,7 +452,9 @@ void loop() {
             Serial.println(uid);
 
             String response;
+            loadingStart();
             String status = sendTap(uid, response) ? jsonField(response, "status") : "";
+            loadingStop();
 
             if (status == "OK") {
                 String nama = jsonField(response, "nama");
