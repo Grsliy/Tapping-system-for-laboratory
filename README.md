@@ -17,18 +17,7 @@ di dokumen utama.
 
 ## Arsitektur
 
-```
-[Kartu RFID pengunjung]
-        |  (tap)
-        v
-[MFRC522] --SPI--> [ESP32-C3 SuperMini]
-                        |  (WiFi + internet, HTTPS)
-                        v
-              [Google Apps Script (Web App)]
-                        |
-                        v
-              [Google Sheet: Pengunjung + Log_Kunjungan]
-```
+![Arsitektur sistem: Kartu RFID ke MFRC522 ke ESP32-C3 ke Google Apps Script ke Google Sheet](arsitektur.png)
 
 ESP32 membaca UID kartu lewat modul MFRC522, connect ke jaringan WiFi kampus, lalu
 mengirim data tap ke Google Apps Script yang mencocokkan dan mencatatnya ke Google Sheet.
