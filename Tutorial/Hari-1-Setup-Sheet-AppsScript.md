@@ -1,6 +1,6 @@
 # Hari 1 — Setup Google Sheet + Apps Script
 
-Langkah kerja detail untuk Hari 1 dari milestone di [Sistem-Logbook-Pengunjung-RFID](../Dokumen/Sistem-Logbook-Pengunjung-RFID.md#milestone-5-hari). Tidak butuh hardware sama sekali, tidak perlu menunggu apa pun.
+Langkah kerja detail untuk Hari 1 dari rencana kerja di [Sistem-Logbook-Pengunjung-RFID](../Dokumen/Sistem-Logbook-Pengunjung-RFID.md#status-dan-rencana-kerja). Tidak butuh hardware sama sekali, tidak perlu menunggu apa pun.
 
 ## Goals hari ini
 
