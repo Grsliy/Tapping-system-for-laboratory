@@ -1,41 +1,31 @@
 # Sistem Logbook Pengunjung Lab berbasis RFID
 
-Catatan teknis rancangan sistem pencatatan kunjungan lab, dari proses surat izin sampai
-pengunjung tinggal tap kartu RFID di pintu masuk.
+Rancangan sistem pencatatan kunjungan lab, dari surat izin sampai pengunjung tinggal tap
+kartu RFID di pintu masuk.
 
-## Latar belakang
+## Latar Belakang
 
-Saat ini proses pencatatan pengunjung lab (siapa saja yang masuk, kapan, dan untuk keperluan
-apa) masih manual. Tujuannya membuat proses ini lebih cepat untuk pengunjung yang sudah
-terdaftar — cukup tap kartu RFID, tanpa perlu isi buku tamu fisik tiap kali datang. Proses
-administratif (surat izin) tetap manual seperti biasa, cuma bagian pencatatan kehadirannya
-yang dibuat otomatis.
+Pencatatan pengunjung lab saat ini masih manual, memakai Google Form untuk mencatat siapa
+yang masuk, kapan, dan untuk keperluan apa. Sistem ini mengotomatiskan bagian
+pencatatan kehadiran saja — pengunjung yang sudah terdaftar tinggal tap kartu RFID di
+pintu masuk. Proses administratif seperti surat izin tetap berjalan manual seperti biasa.
 
-## Alur proses
+## Cara Kerja
 
 ```
-1. Pengunjung mengajukan surat izin kunjungan (fisik, ke lab/kampus) — di luar sistem ini.
+1. Pengunjung mengajukan surat izin kunjungan ke lab/kampus (di luar sistem ini).
 2. Admin lab menyetujui surat izin.
-3. Admin (atau pengunjung, lihat "Hal yang belum diputuskan") mengisi form pendaftaran:
-   nama, institusi/asal, tujuan kunjungan.
-4. Data dari form + UID kartu RFID pengunjung didaftarkan ke database oleh admin.
-5. Pengunjung tap kartu RFID di reader saat masuk lab.
-6. Reader mencatat waktu tap, dicocokkan ke UID yang sudah terdaftar, tersimpan sebagai
-   log kunjungan.
+3. Admin mendaftarkan pengunjung ke Google Sheet: nama, institusi, tujuan, dan UID
+   kartu RFID.
+4. Pengunjung tap kartu RFID di reader saat masuk lab.
+5. Reader mencocokkan UID ke data terdaftar dan mencatat waktu tap sebagai log kunjungan.
 ```
 
-Bagian 1–4 di atas adalah proses pendaftaran (sekali per pengunjung/per kunjungan berlaku),
-bagian 5–6 adalah proses harian yang berulang tiap pengunjung datang.
+Langkah 1–3 adalah pendaftaran, dilakukan sekali per pengunjung. Langkah 4–5 berulang
+setiap kali pengunjung datang. Satu tap mencatat satu kunjungan — tidak ada tap keluar,
+jadi sistem ini mencatat kehadiran saja, tanpa menghitung durasi kunjungan.
 
-## Arsitektur sistem
-
-**Revisi (12 Sept 2026):** setelah eduroam terbukti tidak stabil di ESP32 Arduino core
-(lihat "Riwayat keputusan mikon" di bawah) dan PC lab ternyata sulit disatukan jaringan
-dengan device (Ethernet vs WiFi), server self-hosted di PC lab **diganti Google Sheets +
-Google Apps Script**. Ini menghilangkan dua masalah sekaligus: tidak perlu lagi PC yang
-selalu nyala di jaringan yang sama dengan device, dan tidak perlu lagi mekanisme discovery
-IP dinamis — Apps Script Web App punya URL tetap yang bisa diakses dari jaringan mana pun
-asal ada internet.
+## Arsitektur
 
 ```
 [Kartu RFID pengunjung]
@@ -50,171 +40,83 @@ asal ada internet.
               [Google Sheet: Pengunjung + Log_Kunjungan]
 ```
 
-Pendaftaran pengunjung tidak lewat Form (lihat "Hal yang belum diputuskan" — sudah diganti
-isi manual langsung ke Sheet oleh admin).
+- **MFRC522** membaca UID kartu lewat SPI.
+- **ESP32-C3 SuperMini** membaca UID dari MFRC522, terhubung ke WiFi UGM-IoT (WPA2-PSK),
+  dan mengirim UID ke Apps Script lewat HTTPS setiap ada tap.
+- **Google Apps Script** menerima UID, mencocokkannya ke Sheet `Pengunjung`, mencatat ke
+  Sheet `Log_Kunjungan` kalau valid, dan membalas status ke ESP32.
+- **Google Sheet** menyimpan dua tab: `Pengunjung` untuk data hasil pendaftaran, dan
+  `Log_Kunjungan` untuk riwayat tap. Admin melihat dan mengedit data langsung lewat Sheet,
+  tanpa halaman admin terpisah.
 
-- **MFRC522** — baca UID kartu, dihubungkan ke ESP32 lewat SPI. Logika baca register/UID
-  (`Request`/`Anticoll`) sudah pernah ditulis & diuji versi STM32-nya, tinggal diporting ke
-  Arduino (SPI API beda, logika protokolnya sama).
-- **ESP32-C3 SuperMini** — satu chip yang urus semuanya: baca UID dari MFRC522, connect WiFi
-  (rencana pakai **UGM-IoT**, WPA2-PSK biasa — lihat "Hal yang belum diputuskan"), kirim
-  HTTPS POST ke Apps Script tiap ada tap.
-- **Google Apps Script** — terima UID dari ESP32, cocokkan ke Sheet `Pengunjung`, catat ke
-  Sheet `Log_Kunjungan` kalau valid, balas status. Menggantikan peran server Flask yang
-  sebelumnya dipakai.
-- **Google Sheet** — dua tab, `Pengunjung` (diisi manual oleh admin) dan `Log_Kunjungan`
-  (riwayat tap). Admin bisa lihat/edit langsung lewat Sheet, tidak perlu halaman admin
-  terpisah.
+Sistem awalnya memakai server sendiri (Flask + SQLite) yang jalan di komputer lab. Server
+itu diganti Google Sheets dan Apps Script karena dua alasan: komputer lab pakai Ethernet
+sedangkan device pakai WiFi, jadi keduanya sulit disatukan dalam satu jaringan; dan Apps
+Script Web App punya URL tetap yang bisa diakses dari jaringan mana pun asal ada internet,
+tanpa perlu komputer yang menyala terus-menerus.
 
-## Riwayat keputusan mikon
+## Skema Data
 
-Perjalanan sampai ke ESP32-C3 SuperMini, disimpan supaya tidak mengulang percobaan yang sama:
-
-1. **STM32F401 (Black Pill) + ESP-01 terpisah** (rancangan awal) — ESP-01 dengan firmware
-   AT bawaan cuma support WPA2-PSK biasa, sedangkan WiFi lab ada yang eduroam
-   (WPA2-Enterprise) dan ada yang captive portal. Diganti jadi satu chip WiFi+mikon supaya
-   bisa jalanin logika WPA2-Enterprise sendiri.
-2. **Wemos D1 Mini (ESP8266)** — build sukses, tapi **gagal konsisten connect ke eduroam**
-   meski kredensial terbukti benar (berhasil di Windows). Dugaan kuat: SDK WPA2-Enterprise
-   ESP8266 (`wpa2_enterprise.h`) cuma support TLS 1.0, RADIUS eduroam kemungkinan sudah
-   menonaktifkan versi itu. Match dengan laporan komunitas
-   ([esp8266/Arduino#3842](https://github.com/esp8266/Arduino/issues/3842)) yang menunjukkan
-   implementasi ini memang dikenal tidak stabil buat eduroam.
-3. **ESP32-C3 (SuperMini/clone)** — API WPA2-Enterprise-nya jauh lebih matang (`esp_wpa2.h`,
-   terverifikasi dari header SDK resmi mendukung PEAP-MSCHAPv2), tapi board ini brownout
-   berulang pas WiFi transmit ("wifi:Set status to INIT" berulang cepat) — regulator daya
-   board SuperMini dikenal pas-pasan (arus WiFi transmit bisa sampai 500mA sesaat).
-4. **ESP32 WROOM (DevKit)** — regulator lebih baik, brownout hilang. Tapi eduroam **tetap
-   gagal** dengan berbagai kode alasan yang berganti-ganti (`BEACON_TIMEOUT`, `ASSOC_FAIL`,
-   `HANDSHAKE_TIMEOUT`, `AUTH_EXPIRE`), bahkan ke access point fisik yang berbeda-beda
-   (BSSID beda). Sudah dicoba: API resmi Espressif (`WiFi.begin(ssid, WPA2_AUTH_PEAP, ...)`),
-   matikan WiFi power-save, pantau auto-retry sampai beberapa menit — tetap gagal. Kesimpulan:
-   ini bukan bug di kode kita, tapi ketidakstabilan WPA2-Enterprise Arduino-ESP32 core
-   terhadap infrastruktur RADIUS eduroam kampus ini spesifik — didukung laporan serupa di
-   [issue #5027](https://github.com/espressif/arduino-esp32/issues/5027) (berhasil di
-   ESP-IDF murni, gagal di Arduino core).
-5. **Kembali ke ESP32-C3 SuperMini** (13 Sept 2026) — setelah keputusan berhenti mengejar
-   eduroam dan pindah ke WPA2-PSK biasa (UGM-IoT), alasan awal pindah ke WROOM (butuh
-   WPA2-Enterprise yang stabil) sudah tidak relevan. Brownout yang dulu terjadi di
-   SuperMini murni soal power supply saat pengujian, bukan cacat bawaan chip C3 — WPA2-PSK
-   tidak punya masalah stabilitas seperti eduroam di board manapun. Board lebih kompak dan
-   sudah dimiliki, dipakai lagi dengan syarat power supply yang memadai kali ini.
-
-**Keputusan:** berhenti mengejar eduroam, pindah ke jaringan **UGM-IoT** (WPA2-PSK biasa,
-kalau permohonan izin disetujui — lihat "Hal yang belum diputuskan"). Mikon final:
-**ESP32-C3 SuperMini**.
-
-## Rancangan skema data (Google Sheet)
-
-**Tab `Pengunjung`** — data hasil pendaftaran (satu baris per pengunjung/kunjungan yang disetujui)
+**Tab `Pengunjung`** — satu baris per pengunjung terdaftar.
 
 | Kolom | Keterangan |
 |---|---|
-| `uid_kartu` | UID RFID yang didaftarkan ke pengunjung ini |
+| `uid_kartu` | UID kartu RFID pengunjung |
 | `nama` | Nama pengunjung |
 | `institusi` | Asal institusi/kampus/perusahaan |
 | `tujuan` | Keperluan kunjungan |
-| `tanggal_daftar` | Kapan data ini dimasukkan ke sistem |
-| `status` | Aktif / nonaktif (buat nonaktifkan kartu setelah kunjungan selesai, kalau perlu) |
+| `tanggal_daftar` | Tanggal pendaftaran |
+| `status` | `aktif` atau `nonaktif` |
 
-**Tab `Log_Kunjungan`** — catatan tiap kali tap kartu. Nama dan tujuan ikut disalin dari
-`Pengunjung` di tiap baris (denormalisasi) supaya riwayat langsung kebaca tanpa perlu
-cross-reference manual ke tab lain, dan tetap merekam kondisi pengunjung saat tap itu terjadi
-walau datanya di `Pengunjung` diedit belakangan.
+**Tab `Log_Kunjungan`** — satu baris per tap kartu.
 
 | Kolom | Keterangan |
 |---|---|
 | `uid_kartu` | Merujuk ke `Pengunjung.uid_kartu` |
 | `nama` | Disalin dari `Pengunjung` saat tap terjadi |
 | `tujuan` | Disalin dari `Pengunjung` saat tap terjadi |
-| `waktu_tap` | Timestamp saat tap terjadi |
+| `waktu_tap` | Waktu tap |
 
-## Status pengerjaan saat ini
+Nama dan tujuan disalin ke `Log_Kunjungan` (bukan sekadar dirujuk lewat UID) supaya riwayat
+langsung terbaca tanpa perlu membuka tab lain, dan tetap merekam kondisi pengunjung saat
+tap terjadi meskipun datanya di `Pengunjung` diedit belakangan.
 
-- ✅ **ESP32-C3 SuperMini tervalidasi penuh end-to-end** (14 Sept 2026) — WiFi WPA2-PSK
-  connect, HTTPS POST ke Apps Script, sampai tercatat di Sheet tanpa duplikat. Power supply
-  kali ini tidak bermasalah (tidak ada brownout). Empat kendala teknis lain ditemukan &
-  diperbaiki, detail di
-  [Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md).
-- ❌ **eduroam ditinggalkan** — sudah dicoba maksimal di 2 mikon (ESP8266, ESP32-C3/WROOM)
-  dengan berbagai pendekatan, tetap tidak stabil. Lihat "Riwayat keputusan mikon" di atas.
-- ⏳ **Permohonan akses WiFi UGM-IoT** — sudah dikirim email ke pengelola jaringan
-  departemen, menunggu balasan (termasuk konfirmasi apakah UGM-IoT satu subnet dengan
-  Ethernet lab, relevan untuk arsitektur lama; dengan Apps Script ini sudah tidak masalah
-  karena tidak perlu satu jaringan dengan server).
-- ❌ **`logbook-server/` (Flask + SQLite) dihapus** dari repo — arsitektur pindah ke Google
-  Sheets + Apps Script, PC lab tidak lagi berperan sebagai server.
-- ✅ **Google Sheet + Apps Script selesai dan teruji** — Hari 1 milestone tuntas, lihat
-  detail di bagian Milestone di bawah.
-- ✅ **Modul MFRC522 pengganti sudah sampai dan terintegrasi penuh** (14 Sept 2026) — kartu
-  fisik berhasil di-tap, UID terbaca, dikirim ke Apps Script, tercatat di Sheet. Sistem
-  tap-in end-to-end **sudah berfungsi dari kartu fisik sampai ke Sheet**. Detail di
-  [Tutorial/Hari-4-Integrasi-RFID.md](../Tutorial/Hari-4-Integrasi-RFID.md).
+## Pemilihan Mikrokontroler
 
-## Hal yang belum diputuskan
+WiFi lab tersedia dalam dua bentuk: eduroam (WPA2-Enterprise) dan captive portal. Keduanya
+tidak didukung modul WiFi murah seperti ESP-01, jadi rancangan awal (STM32 + ESP-01
+terpisah) diganti satu chip WiFi-mikon yang bisa menjalankan autentikasi sendiri. Proses
+mencari chip yang benar-benar berhasil connect ke eduroam butuh empat percobaan board:
 
-- **Balasan izin UGM-IoT dari departemen** — belum ada kepastian. Hari 3 sudah berhasil
-  divalidasi pakai hotspot HP sementara, jadi tidak lagi menghalangi progres — tapi tetap
-  perlu diselesaikan sebelum pemasangan permanen di lab.
-- ~~**Siapa yang isi form pendaftaran**~~ — sudah diputuskan: **tidak pakai Form sama
-  sekali**. Admin isi manual langsung ke tab `Pengunjung` di Sheet setelah surat izin
-  disetujui. Google Form (Hari 2 di milestone lama) di-skip.
-- **Satu tap atau dua tap (masuk-keluar)** — saat ini diasumsikan cukup satu kali tap per
-  kunjungan (cuma catat kehadiran), belum ada kebutuhan hitung durasi kunjungan. Catatan:
-  ini beda dari soal duplikat teknis yang sudah diperbaiki di Hari 3 (retry Google dalam
-  10 detik) — tap yang sama di jam berbeda hari yang sama itu memang seharusnya tetap
-  tercatat sebagai baris terpisah, bukan sesuatu yang perlu dicegah.
-- **Penanganan kartu tidak terdaftar** — apa yang terjadi kalau ada kartu di-tap tapi UID-nya
-  tidak ada di tab `Pengunjung` (misal ditolak dengan indikator LED/buzzer, atau tetap
-  dicatat sebagai "UID tidak dikenal" untuk ditindaklanjuti admin).
+| Board | Hasil |
+|---|---|
+| Wemos D1 Mini (ESP8266) | Build berhasil, tapi gagal konsisten connect eduroam meski kredensial terbukti benar (berhasil di Windows). SDK WPA2-Enterprise ESP8266 hanya mendukung TLS 1.0 — kemungkinan sudah dinonaktifkan di RADIUS server eduroam kampus. |
+| ESP32-C3 SuperMini | Dukungan WPA2-Enterprise lebih matang (PEAP-MSCHAPv2 didukung), tapi board brownout berulang saat WiFi transmit — regulator daya bawaan tidak cukup kuat untuk lonjakan arus hingga 500mA. |
+| ESP32 WROOM | Regulator lebih baik, brownout hilang. Eduroam tetap gagal, dengan kode alasan yang berbeda-beda tiap percobaan (`BEACON_TIMEOUT`, `ASSOC_FAIL`, `HANDSHAKE_TIMEOUT`, `AUTH_EXPIRE`), termasuk ke access point fisik yang berbeda. Laporan serupa ada di [issue #5027 arduino-esp32](https://github.com/espressif/arduino-esp32/issues/5027): berhasil lewat ESP-IDF murni, gagal lewat Arduino core. |
+| ESP32-C3 SuperMini (dipakai kembali) | Eduroam ditinggalkan, WiFi pindah ke WPA2-PSK (UGM-IoT) yang tidak punya masalah stabilitas serupa di board manapun. Brownout sebelumnya murni soal power supply saat pengujian, bukan cacat chip — dipakai lagi dengan power supply yang memadai. |
 
-## Milestone 5 hari
+Mikon final: **ESP32-C3 SuperMini**, WiFi WPA2-PSK ke UGM-IoT.
 
-Disusun 12 Sept 2026, setelah pivot ke Google Sheets + Apps Script. Beberapa hari
-bergantung hal di luar kendali (approval UGM-IoT, kedatangan modul RFID) — ditandai jelas.
+## Status dan Rencana Kerja
 
-**Hari 1 — Backend: Google Sheet + Apps Script** ✅ SELESAI
-*(Tidak perlu hardware, tidak perlu tunggu approval UGM-IoT)*
-- [x] Buat Google Sheet, 2 tab: `Pengunjung` dan `Log_Kunjungan` (skema di atas).
-- [x] Tulis Apps Script `doPost(e)`: terima UID, cocokkan ke tab `Pengunjung`, catat ke
-      `Log_Kunjungan` kalau valid, balas JSON status. Kode tersimpan di
-      [logbook-appsscript/Code.gs](../logbook-appsscript/Code.gs).
-- [x] Deploy sebagai Web App, catat URL-nya.
-- [x] Tes pakai PowerShell (`Invoke-RestMethod`) dengan UID dummy — terverifikasi 13 Sept
-      2026, `OK` untuk UID terdaftar, `REJECTED` untuk UID tidak dikenal, dan baris baru
-      terkonfirmasi muncul di tab `Log_Kunjungan`. Detail di
-      [Tutorial/Hari-1-Setup-Sheet-AppsScript.md](../Tutorial/Hari-1-Setup-Sheet-AppsScript.md).
+Sistem tap-in sudah berjalan penuh dari kartu fisik sampai tercatat di Sheet.
 
-**Hari 2 — Pendaftaran & lihat riwayat** ⏭️ DI-SKIP
-*(Keputusan 13 Sept 2026: tidak pakai Google Form. Admin isi manual langsung ke tab
-`Pengunjung` di Sheet — lebih simpel buat skala pengunjung yang tidak terlalu banyak.
-Riwayat kunjungan juga cukup dilihat langsung dari tab `Log_Kunjungan`, tidak perlu
-halaman terpisah. Langsung lanjut ke Hari 3.)*
+| Hari | Pekerjaan | Status |
+|---|---|---|
+| 1 | Google Sheet + Apps Script (endpoint `doPost`, deploy Web App) | Selesai — [detail](../Tutorial/Hari-1-Setup-Sheet-AppsScript.md) |
+| 2 | Form pendaftaran pengunjung | Dilewati — admin mendaftarkan pengunjung langsung ke Sheet |
+| 3 | ESP32 connect WiFi + HTTPS ke Apps Script | Selesai — [detail](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md) |
+| 4 | Integrasi pembaca RFID | Selesai — [detail](../Tutorial/Hari-4-Integrasi-RFID.md) |
+| 5 | Uji kasus tidak biasa, dokumentasi akhir | Belum mulai |
 
-**Hari 3 — ESP32 connect WiFi + HTTPS ke Apps Script** ✅ SELESAI
-*(Dites pakai hotspot HP — UGM-IoT masih menunggu approval)*
-- [x] Bersihkan `main.cpp`: hapus kode UDP discovery & eduroam, ganti WiFi ke WPA2-PSK biasa.
-- [x] Tambah kode HTTPS POST ke URL Apps Script (`HTTPClient` + `WiFiClientSecure`).
-- [x] Tes kirim UID dummy dari ESP32 fisik — **berhasil**, `status: OK` dengan data yang
-      benar, terkonfirmasi masuk ke `Log_Kunjungan` tanpa duplikat.
+Beberapa kendala teknis khusus ESP32-C3 SuperMini ditemukan dan diperbaiki selama Hari 3–4
+(Serial Monitor tidak menampilkan output, bug redirect di HTTPClient, duplikat request dari
+Google, USB yang perlu dicabut-pasang ulang setelah upload) — detail lengkap tiap kendala
+ada di Tutorial masing-masing hari.
 
-Empat kendala teknis ditemukan & diperbaiki (spesifik ke ESP32-C3 SuperMini + Apps Script):
-Serial Monitor kosong (perlu flag `ARDUINO_USB_CDC_ON_BOOT`), ESP32 cuma support WiFi
-2.4GHz (bukan 5GHz), bug redirect di `HTTPClient` ESP32 yang butuh penanganan manual, dan
-retry duplikat dari infrastruktur Google yang perlu di-dedup di Apps Script. Detail lengkap
-tiap kendala + fix-nya di
-[Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md).
+Yang masih tersisa:
 
-**Hari 4 — Integrasi RFID** ✅ SELESAI
-- [x] Port kode `MFRC522_Request`/`MFRC522_Anticoll` ke project ini (SPI Arduino).
-- [x] Gabungkan dengan kode WiFi+HTTPS dari Hari 3.
-- [x] Tes tap kartu asli — UID tidak terdaftar dibalas `REJECTED` (tidak tercatat), UID
-      terdaftar dibalas `OK` dan tercatat di `Log_Kunjungan`. **Sistem tap-in lengkap
-      end-to-end sudah berfungsi**, dari kartu fisik sampai ke Sheet. Detail wiring, kode,
-      dan satu kendala teknis tambahan (USB re-enumerate setelah upload) di
-      [Tutorial/Hari-4-Integrasi-RFID.md](../Tutorial/Hari-4-Integrasi-RFID.md).
-
-**Hari 5 — Wrap-up**
-- [ ] Uji kasus tidak biasa: kartu tidak terdaftar, WiFi putus sesaat.
-- [ ] Update dokumen ini ke kondisi final.
-- [ ] Commit & push terakhir, rapikan repo.
+- Persetujuan akses WiFi UGM-IoT dari departemen. Sistem sudah tervalidasi lewat hotspot
+  HP sementara, jadi ini tidak menghambat pengembangan, tapi perlu selesai sebelum
+  pemasangan permanen di lab.
+- Uji kasus tidak biasa: kartu tidak terdaftar, koneksi WiFi putus sesaat.
