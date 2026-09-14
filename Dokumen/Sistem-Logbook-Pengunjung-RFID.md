@@ -131,11 +131,11 @@ walau datanya di `Pengunjung` diedit belakangan.
 
 ## Status pengerjaan saat ini
 
-- ⚠️ **Kembali ke ESP32-C3 SuperMini** (dari ESP32 WROOM yang sempat tervalidasi sehat) —
-  alasan pindah ke WROOM (WPA2-Enterprise) sudah tidak relevan setelah eduroam ditinggalkan.
-  `platformio.ini` dan `main.cpp` sudah disiapkan ulang, **build tervalidasi sukses**, tapi
-  **belum diuji di board fisik** — perlu diperhatikan lagi soal power supply yang memadai
-  (pelajaran dari brownout sebelumnya).
+- ✅ **ESP32-C3 SuperMini tervalidasi penuh end-to-end** (14 Sept 2026) — WiFi WPA2-PSK
+  connect, HTTPS POST ke Apps Script, sampai tercatat di Sheet tanpa duplikat. Power supply
+  kali ini tidak bermasalah (tidak ada brownout). Empat kendala teknis lain ditemukan &
+  diperbaiki, detail di
+  [Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md).
 - ❌ **eduroam ditinggalkan** — sudah dicoba maksimal di 2 mikon (ESP8266, ESP32-C3/WROOM)
   dengan berbagai pendekatan, tetap tidak stabil. Lihat "Riwayat keputusan mikon" di atas.
 - ⏳ **Permohonan akses WiFi UGM-IoT** — sudah dikirim email ke pengelola jaringan
@@ -153,13 +153,17 @@ walau datanya di `Pengunjung` diedit belakangan.
 
 ## Hal yang belum diputuskan
 
-- **Balasan izin UGM-IoT dari departemen** — belum ada kepastian, dan mempengaruhi apakah
-  Hari 3 di milestone bisa jalan sesuai rencana atau perlu jaringan sementara (hotspot HP).
+- **Balasan izin UGM-IoT dari departemen** — belum ada kepastian. Hari 3 sudah berhasil
+  divalidasi pakai hotspot HP sementara, jadi tidak lagi menghalangi progres — tapi tetap
+  perlu diselesaikan sebelum pemasangan permanen di lab.
 - ~~**Siapa yang isi form pendaftaran**~~ — sudah diputuskan: **tidak pakai Form sama
   sekali**. Admin isi manual langsung ke tab `Pengunjung` di Sheet setelah surat izin
   disetujui. Google Form (Hari 2 di milestone lama) di-skip.
 - **Satu tap atau dua tap (masuk-keluar)** — saat ini diasumsikan cukup satu kali tap per
-  kunjungan (cuma catat kehadiran), belum ada kebutuhan hitung durasi kunjungan.
+  kunjungan (cuma catat kehadiran), belum ada kebutuhan hitung durasi kunjungan. Catatan:
+  ini beda dari soal duplikat teknis yang sudah diperbaiki di Hari 3 (retry Google dalam
+  10 detik) — tap yang sama di jam berbeda hari yang sama itu memang seharusnya tetap
+  tercatat sebagai baris terpisah, bukan sesuatu yang perlu dicegah.
 - **Penanganan kartu tidak terdaftar** — apa yang terjadi kalau ada kartu di-tap tapi UID-nya
   tidak ada di tab `Pengunjung` (misal ditolak dengan indikator LED/buzzer, atau tetap
   dicatat sebagai "UID tidak dikenal" untuk ditindaklanjuti admin).
@@ -187,16 +191,19 @@ bergantung hal di luar kendali (approval UGM-IoT, kedatangan modul RFID) — dit
 Riwayat kunjungan juga cukup dilihat langsung dari tab `Log_Kunjungan`, tidak perlu
 halaman terpisah. Langsung lanjut ke Hari 3.)*
 
-**Hari 3 — ESP32 connect WiFi + HTTPS ke Apps Script**
-*(Kalau UGM-IoT belum di-approve, pakai hotspot HP dulu buat validasi kode)*
-- [x] Bersihkan `main.cpp`: hapus kode UDP discovery & eduroam (sudah tidak relevan), ganti
-      WiFi ke WPA2-PSK biasa (`WiFi.begin(ssid, password)`) — kredensial diisi saat upload
-      sesuai jaringan yang dipakai (UGM-IoT atau hotspot sementara).
-- [x] Tambah kode HTTPS POST ke URL Apps Script (`HTTPClient` + `WiFiClientSecure`,
-      `setInsecure()`). Build tervalidasi sukses di ESP32-C3.
-- [ ] Tes kirim UID dummy dari ESP32 fisik, pastikan tercatat di Sheet — **belum dijalankan
-      di board sungguhan**, kode sudah otomatis kirim UID dummy `DEADBEEF` sekali begitu
-      WiFi connect saat boot.
+**Hari 3 — ESP32 connect WiFi + HTTPS ke Apps Script** ✅ SELESAI
+*(Dites pakai hotspot HP — UGM-IoT masih menunggu approval)*
+- [x] Bersihkan `main.cpp`: hapus kode UDP discovery & eduroam, ganti WiFi ke WPA2-PSK biasa.
+- [x] Tambah kode HTTPS POST ke URL Apps Script (`HTTPClient` + `WiFiClientSecure`).
+- [x] Tes kirim UID dummy dari ESP32 fisik — **berhasil**, `status: OK` dengan data yang
+      benar, terkonfirmasi masuk ke `Log_Kunjungan` tanpa duplikat.
+
+Empat kendala teknis ditemukan & diperbaiki (spesifik ke ESP32-C3 SuperMini + Apps Script):
+Serial Monitor kosong (perlu flag `ARDUINO_USB_CDC_ON_BOOT`), ESP32 cuma support WiFi
+2.4GHz (bukan 5GHz), bug redirect di `HTTPClient` ESP32 yang butuh penanganan manual, dan
+retry duplikat dari infrastruktur Google yang perlu di-dedup di Apps Script. Detail lengkap
+tiap kendala + fix-nya di
+[Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md).
 
 **Hari 4 — Integrasi RFID**
 *(Butuh modul MFRC522 pengganti sudah di tangan)*
