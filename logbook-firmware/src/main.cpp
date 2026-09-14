@@ -40,9 +40,8 @@ void connectWiFi() {
     wifiReady = true;
 }
 
-// Kirim satu request POST JSON ke url, balikin kode HTTP-nya. Dipakai dua kali di
-// sendTap() -- sekali ke Apps Script langsung, sekali lagi manual ke URL redirect-nya
-// kalau perlu (lihat catatan di sendTap soal kenapa tidak pakai auto-follow-redirect).
+// Kirim POST JSON ke url, balikin kode HTTP-nya lewat responseOut. Dipakai buat request
+// pertama ke Apps Script (yang benar-benar menjalankan doPost di sisi Google).
 int postJson(const String &url, const String &payload, String &responseOut) {
     WiFiClientSecure client;
     client.setInsecure(); // Apps Script sudah HTTPS domain Google yang terpercaya
@@ -60,12 +59,30 @@ int postJson(const String &url, const String &payload, String &responseOut) {
     String location = http.getLocation();
     http.end();
 
-    // Kalau redirect (302), lokasinya disimpan di variabel statis lewat parameter out
-    // -- lihat pemanggilnya di sendTap().
     if (httpCode == 302) {
         responseOut = location; // sengaja dipakai ulang buat bawa URL redirect keluar
     }
 
+    return httpCode;
+}
+
+// Ambil isi respons lewat GET biasa -- dipakai buat "menjemput" hasil dari URL redirect
+// yang dikasih Apps Script. URL itu cuma nyimpen hasil yang SUDAH dieksekusi di request
+// POST sebelumnya, jadi wajar cuma nerima GET (POST ke situ balas 405 Method Not Allowed).
+int getContent(const String &url, String &responseOut) {
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    HTTPClient http;
+    http.setTimeout(15000);
+    http.begin(client, url);
+
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+        responseOut = http.getString();
+    }
+
+    http.end();
     return httpCode;
 }
 
@@ -93,8 +110,8 @@ bool sendTap(const String &uid) {
         String redirectUrl = response;
         Serial.print("Redirect ke: ");
         Serial.println(redirectUrl);
-        httpCode = postJson(redirectUrl, payload, response);
-        Serial.print("Kode HTTP setelah redirect: ");
+        httpCode = getContent(redirectUrl, response);
+        Serial.print("Kode HTTP setelah redirect (GET): ");
         Serial.println(httpCode);
     }
 
