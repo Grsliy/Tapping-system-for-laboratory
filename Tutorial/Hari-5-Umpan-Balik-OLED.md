@@ -133,4 +133,10 @@ Perangkat berjalan tanpa komputer yang tersambung. Layar menyapa pengunjung terd
 namanya, menolak kartu yang belum terdaftar sambil menampilkan UID-nya, dan menyebutkan sendiri
 penyebabnya ketika jaringan bermasalah.
 
+Urutan satu kali tap, dari menunggu balasan sampai hasilnya:
+
+| Menunggu balasan | Kartu terdaftar | Kartu belum terdaftar |
+|---|---|---|
+| ![Layar menampilkan Checking dengan bongo cat di atasnya](../Gambar/layar-checking.jpg) | ![Layar menampilkan Welcome beserta nama pengunjung](../Gambar/layar-welcome.jpg) | ![Layar menampilkan UID kartu dan teks please register](../Gambar/layar-tidak-terdaftar.jpg) |
+
 Pemakaian sumber daya setelah semua fitur di atas masuk: RAM 12,6 persen dan Flash 68,6 persen.
