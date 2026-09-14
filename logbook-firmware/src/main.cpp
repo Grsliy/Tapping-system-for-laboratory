@@ -48,17 +48,22 @@ bool sendTap(const String &uid) {
         return false;
     }
 
+    Serial.println("Setup WiFiClientSecure...");
     WiFiClientSecure client;
     // Lewati validasi sertifikat -- Apps Script sudah HTTPS lewat domain Google yang
     // terpercaya, setInsecure() cukup buat kebutuhan ini (bukan aplikasi finansial/sensitif).
     client.setInsecure();
 
+    Serial.println("http.begin...");
     HTTPClient http;
+    http.setTimeout(15000); // 15 detik, biar tidak hang selamanya kalau memang macet
     http.begin(client, APPS_SCRIPT_URL);
     http.addHeader("Content-Type", "application/json");
 
     String payload = "{\"uid\":\"" + uid + "\"}";
+    Serial.println("Mulai http.POST (bisa beberapa detik, TLS handshake)...");
     int httpCode = http.POST(payload);
+    Serial.println("http.POST selesai.");
 
     Serial.print("POST -> kode HTTP: ");
     Serial.println(httpCode);
