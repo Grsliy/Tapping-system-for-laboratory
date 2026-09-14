@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include <Wire.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <Adafruit_SSD1306.h>
 
 #include "secrets.h"
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
@@ -44,7 +46,42 @@
 #define MI_NOTAGERR  1
 #define MI_ERR       2
 
+// ===== OLED SSD1306 (I2C) =====
+#define OLED_SDA_PIN 0
+#define OLED_SCL_PIN 1
+#define OLED_WIDTH   128
+#define OLED_HEIGHT  64
+#define OLED_ADDR    0x3C
+
+Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
+
 bool wifiReady = false;
+bool oledReady = false;
+
+void oledInit() {
+    Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
+    oledReady = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+    if (!oledReady) {
+        Serial.println("OLED gagal init, sistem lanjut tanpa layar.");
+    }
+}
+
+void oledShow(const String &line1, uint8_t size1, const String &line2, uint8_t size2) {
+    if (!oledReady) return;
+
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, (OLED_HEIGHT - (size1 + size2) * 8) / 2);
+    display.setTextSize(size1);
+    display.println(line1);
+    display.setTextSize(size2);
+    display.println(line2);
+    display.display();
+}
+
+void oledIdle() {
+    oledShow("Please", 2, "tap", 2);
+}
 
 void connectWiFi() {
     Serial.println("Menyambungkan ke WiFi...");
@@ -115,29 +152,43 @@ int getContent(const String &url, String &responseOut) {
     return httpCode;
 }
 
+// Ambil nilai string satu field dari balasan JSON Apps Script, mis. "nama" atau "status".
+String jsonField(const String &json, const String &key) {
+    int k = json.indexOf("\"" + key + "\"");
+    if (k < 0) return "";
+
+    int colon = json.indexOf(':', k);
+    if (colon < 0) return "";
+
+    int q1 = json.indexOf('"', colon);
+    int q2 = (q1 < 0) ? -1 : json.indexOf('"', q1 + 1);
+    if (q1 < 0 || q2 < 0) return "";
+
+    return json.substring(q1 + 1, q2);
+}
+
 // Kirim UID hasil tap kartu ke Google Apps Script.
-bool sendTap(const String &uid) {
+bool sendTap(const String &uid, String &responseOut) {
     if (!wifiReady) {
         Serial.println("WiFi belum siap, tap dibatalkan.");
         return false;
     }
 
     String payload = "{\"uid\":\"" + uid + "\"}";
-    String response;
 
     Serial.println("POST ke Apps Script...");
-    int httpCode = postJson(APPS_SCRIPT_URL, payload, response);
+    int httpCode = postJson(APPS_SCRIPT_URL, payload, responseOut);
     Serial.print("Kode HTTP pertama: ");
     Serial.println(httpCode);
 
     if (httpCode == 302) {
-        String redirectUrl = response;
+        String redirectUrl = responseOut;
         Serial.print("Redirect ke: ");
         Serial.println(redirectUrl);
 
         const int MAX_RETRY = 3;
         for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-            httpCode = getContent(redirectUrl, response);
+            httpCode = getContent(redirectUrl, responseOut);
             Serial.print("Kode HTTP setelah redirect (GET), percobaan ");
             Serial.print(attempt);
             Serial.print(": ");
@@ -148,10 +199,10 @@ bool sendTap(const String &uid) {
     }
 
     if (httpCode == 200) {
-        Serial.println(response);
+        Serial.println(responseOut);
     } else {
         Serial.println("Gagal, respons:");
-        Serial.println(response);
+        Serial.println(responseOut);
     }
 
     return httpCode == 200;
@@ -342,16 +393,22 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
+    oledInit();
+    oledShow("WiFi", 2, "connecting...", 1);
+
     connectWiFi();
     MFRC522_Init();
 
     Serial.println("Siap. Tempelkan kartu...");
+    oledIdle();
 }
 
 void loop() {
     if (!wifiReady) {
+        oledShow("No WiFi", 2, "reconnecting...", 1);
         connectWiFi();
         delay(2000);
+        if (wifiReady) oledIdle();
         return;
     }
 
@@ -363,8 +420,21 @@ void loop() {
             String uid = uidToString(serNum);
             Serial.print("Kartu terdeteksi, UID: ");
             Serial.println(uid);
-            sendTap(uid);
-            delay(1000); // jeda supaya tidak spam kalau kartu masih nempel
+
+            String response;
+            String status = sendTap(uid, response) ? jsonField(response, "status") : "";
+
+            if (status == "OK") {
+                String nama = jsonField(response, "nama");
+                oledShow("Welcome", 2, nama, nama.length() > 10 ? 1 : 2);
+            } else if (status == "REJECTED") {
+                oledShow(uid, 2, "please register", 1);
+            } else {
+                oledShow("Error", 2, "please retry", 1);
+            }
+
+            delay(3000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
+            oledIdle();
         }
     }
 
