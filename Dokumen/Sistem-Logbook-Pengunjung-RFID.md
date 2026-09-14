@@ -146,10 +146,10 @@ walau datanya di `Pengunjung` diedit belakangan.
   Sheets + Apps Script, PC lab tidak lagi berperan sebagai server.
 - ✅ **Google Sheet + Apps Script selesai dan teruji** — Hari 1 milestone tuntas, lihat
   detail di bagian Milestone di bawah.
-- ⏳ **Modul MFRC522 pengganti** — status kedatangan perlu dicek ulang (terakhir tercatat
-  masih menunggu pengiriman).
-- ✅ Kode baca UID kartu (`MFRC522_Request`/`MFRC522_Anticoll`) sudah pernah ditulis & teruji
-  strukturnya versi STM32 HAL — jadi referensi logika, masih perlu diporting ke Arduino.
+- ✅ **Modul MFRC522 pengganti sudah sampai dan terintegrasi penuh** (14 Sept 2026) — kartu
+  fisik berhasil di-tap, UID terbaca, dikirim ke Apps Script, tercatat di Sheet. Sistem
+  tap-in end-to-end **sudah berfungsi dari kartu fisik sampai ke Sheet**. Detail di
+  [Tutorial/Hari-4-Integrasi-RFID.md](../Tutorial/Hari-4-Integrasi-RFID.md).
 
 ## Hal yang belum diputuskan
 
@@ -205,11 +205,14 @@ retry duplikat dari infrastruktur Google yang perlu di-dedup di Apps Script. Det
 tiap kendala + fix-nya di
 [Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md).
 
-**Hari 4 — Integrasi RFID**
-*(Butuh modul MFRC522 pengganti sudah di tangan)*
-- [ ] Port kode `MFRC522_Request`/`MFRC522_Anticoll` ke project ini (SPI Arduino).
-- [ ] Gabungkan dengan kode WiFi+HTTPS dari Hari 3.
-- [ ] Tes tap kartu asli sampai tercatat di Sheet.
+**Hari 4 — Integrasi RFID** ✅ SELESAI
+- [x] Port kode `MFRC522_Request`/`MFRC522_Anticoll` ke project ini (SPI Arduino).
+- [x] Gabungkan dengan kode WiFi+HTTPS dari Hari 3.
+- [x] Tes tap kartu asli — UID tidak terdaftar dibalas `REJECTED` (tidak tercatat), UID
+      terdaftar dibalas `OK` dan tercatat di `Log_Kunjungan`. **Sistem tap-in lengkap
+      end-to-end sudah berfungsi**, dari kartu fisik sampai ke Sheet. Detail wiring, kode,
+      dan satu kendala teknis tambahan (USB re-enumerate setelah upload) di
+      [Tutorial/Hari-4-Integrasi-RFID.md](../Tutorial/Hari-4-Integrasi-RFID.md).
 
 **Hari 5 — Wrap-up**
 - [ ] Uji kasus tidak biasa: kartu tidak terdaftar, WiFi putus sesaat.
