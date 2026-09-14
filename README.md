@@ -3,6 +3,8 @@
 Sistem pencatatan kunjungan otomatis untuk Laboratorium Power Electronics. Pengunjung yang
 sudah terdaftar tinggal tap kartu RFID di pintu masuk, tanpa perlu isi buku tamu fisik.
 
+<img src="Gambar/alat-menyala.jpg" width="420" alt="Prototipe di atas breadboard: ESP32-C3 SuperMini, modul RFID-RC522, dan layar OLED yang menampilkan Please tap">
+
 ## Cara kerja
 
 1. Pengunjung mengajukan surat izin kunjungan ke lab, lalu admin mendaftarkan namanya ke
@@ -19,7 +21,7 @@ di dokumen utama.
 
 ## Arsitektur
 
-![Arsitektur sistem: Kartu RFID ke MFRC522 ke ESP32-C3 ke Google Apps Script ke Google Sheet](arsitektur.png)
+![Arsitektur sistem: Kartu RFID ke MFRC522 ke ESP32-C3 ke Google Apps Script ke Google Sheet](Gambar/arsitektur.png)
 
 ESP32 membaca UID kartu lewat modul MFRC522, connect ke jaringan WiFi kampus, lalu
 mengirim data tap ke Google Apps Script yang mencocokkan dan mencatatnya ke Google Sheet.
