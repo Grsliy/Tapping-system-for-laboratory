@@ -8,7 +8,7 @@
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
 // dan isi kredensial WiFi + URL Apps Script asli di situ sebelum build.
 
-// ===== Pin MFRC522 (SPI custom pin, ESP32-C3 GPIO matrix fleksibel) =====
+// ===== Pin MFRC522 (SPI custom pin, ESP32-C3 GPIO) =====
 #define RFID_SCK_PIN  4
 #define RFID_MISO_PIN 5
 #define RFID_MOSI_PIN 6
@@ -50,7 +50,7 @@ void connectWiFi() {
     Serial.println("Menyambungkan ke WiFi...");
 
     WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false); // hindari WiFi "tidur" sebentar-sebentar, jaga koneksi tetap stabil
+    WiFi.setSleep(false);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     Serial.print("Menyambungkan");
@@ -73,11 +73,10 @@ void connectWiFi() {
     wifiReady = true;
 }
 
-// Kirim POST JSON ke url, balikin kode HTTP-nya lewat responseOut. Dipakai buat request
-// pertama ke Apps Script (yang benar-benar menjalankan doPost di sisi Google).
+// Kirim POST JSON ke url, balikin kode HTTP-nya lewat responseOut.
 int postJson(const String &url, const String &payload, String &responseOut) {
     WiFiClientSecure client;
-    client.setInsecure(); // Apps Script sudah HTTPS domain Google yang terpercaya
+    client.setInsecure(); // Apps Script sudah HTTPS domain Google
 
     HTTPClient http;
     http.setTimeout(15000);
@@ -93,15 +92,12 @@ int postJson(const String &url, const String &payload, String &responseOut) {
     http.end();
 
     if (httpCode == 302) {
-        responseOut = location; // sengaja dipakai ulang buat bawa URL redirect keluar
+        responseOut = location;
     }
 
     return httpCode;
 }
 
-// Ambil isi respons lewat GET biasa -- dipakai buat "menjemput" hasil dari URL redirect
-// yang dikasih Apps Script. URL itu cuma nyimpen hasil yang SUDAH dieksekusi di request
-// POST sebelumnya, jadi wajar cuma nerima GET (POST ke situ balas 405 Method Not Allowed).
 int getContent(const String &url, String &responseOut) {
     WiFiClientSecure client;
     client.setInsecure();
@@ -119,8 +115,7 @@ int getContent(const String &url, String &responseOut) {
     return httpCode;
 }
 
-// Kirim UID (dummy dulu buat tes Hari 3, UID asli setelah Fase 4/RFID terpasang)
-// ke Google Apps Script.
+// Kirim UID hasil tap kartu ke Google Apps Script.
 bool sendTap(const String &uid) {
     if (!wifiReady) {
         Serial.println("WiFi belum siap, tap dibatalkan.");
@@ -135,15 +130,6 @@ bool sendTap(const String &uid) {
     Serial.print("Kode HTTP pertama: ");
     Serial.println(httpCode);
 
-    // Apps Script Web App SELALU balas 302 dulu (redirect ke domain googleusercontent.com
-    // tempat script-nya benar-benar jalan). HTTPClient ESP32 punya bug kalau redirect
-    // di-follow otomatis (salah kirim Content-Length, bikin Google balas 400) -- makanya
-    // redirect-nya kita tangani manual: request baru bersih ke URL hasil redirect.
-    //
-    // Catatan: tap sudah TERCATAT di Sheet begitu request POST pertama berhasil (302
-    // diterima) -- bagian di bawah ini cuma buat AMBIL BALASANNYA, bukan mengulang aksinya.
-    // Kalau ini gagal (mis. hiccup TLS sesaat), coba beberapa kali sebelum menyerah, supaya
-    // device tidak salah lapor "gagal" padahal datanya sudah masuk.
     if (httpCode == 302) {
         String redirectUrl = response;
         Serial.print("Redirect ke: ");
@@ -171,7 +157,7 @@ bool sendTap(const String &uid) {
     return httpCode == 200;
 }
 
-// ===== Driver MFRC522 (porting dari versi STM32 HAL yang sudah diuji sebelumnya) =====
+// ===== Driver MFRC522 =====
 
 uint8_t MFRC522_ReadRegister(uint8_t reg) {
     uint8_t addr = ((reg << 1) & 0x7E) | 0x80;
