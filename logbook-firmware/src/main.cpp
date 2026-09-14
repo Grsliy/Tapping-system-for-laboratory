@@ -40,6 +40,35 @@ void connectWiFi() {
     wifiReady = true;
 }
 
+// Kirim satu request POST JSON ke url, balikin kode HTTP-nya. Dipakai dua kali di
+// sendTap() -- sekali ke Apps Script langsung, sekali lagi manual ke URL redirect-nya
+// kalau perlu (lihat catatan di sendTap soal kenapa tidak pakai auto-follow-redirect).
+int postJson(const String &url, const String &payload, String &responseOut) {
+    WiFiClientSecure client;
+    client.setInsecure(); // Apps Script sudah HTTPS domain Google yang terpercaya
+
+    HTTPClient http;
+    http.setTimeout(15000);
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+
+    int httpCode = http.POST(payload);
+    if (httpCode > 0) {
+        responseOut = http.getString();
+    }
+
+    String location = http.getLocation();
+    http.end();
+
+    // Kalau redirect (302), lokasinya disimpan di variabel statis lewat parameter out
+    // -- lihat pemanggilnya di sendTap().
+    if (httpCode == 302) {
+        responseOut = location; // sengaja dipakai ulang buat bawa URL redirect keluar
+    }
+
+    return httpCode;
+}
+
 // Kirim UID (dummy dulu buat tes Hari 3, UID asli setelah Fase 4/RFID terpasang)
 // ke Google Apps Script.
 bool sendTap(const String &uid) {
@@ -48,38 +77,34 @@ bool sendTap(const String &uid) {
         return false;
     }
 
-    Serial.println("Setup WiFiClientSecure...");
-    WiFiClientSecure client;
-    // Lewati validasi sertifikat -- Apps Script sudah HTTPS lewat domain Google yang
-    // terpercaya, setInsecure() cukup buat kebutuhan ini (bukan aplikasi finansial/sensitif).
-    client.setInsecure();
-
-    Serial.println("http.begin...");
-    HTTPClient http;
-    http.setTimeout(15000); // 15 detik, biar tidak hang selamanya kalau memang macet
-    // Apps Script Web App selalu balas 302 dulu (redirect ke domain googleusercontent.com
-    // tempat script-nya benar-benar jalan) -- tanpa ini, HTTPClient default berhenti di
-    // 302 dan tidak pernah lihat balasan JSON yang sebenarnya.
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    http.begin(client, APPS_SCRIPT_URL);
-    http.addHeader("Content-Type", "application/json");
-
     String payload = "{\"uid\":\"" + uid + "\"}";
-    Serial.println("Mulai http.POST (bisa beberapa detik, TLS handshake)...");
-    int httpCode = http.POST(payload);
-    Serial.println("http.POST selesai.");
+    String response;
 
-    Serial.print("POST -> kode HTTP: ");
+    Serial.println("POST ke Apps Script...");
+    int httpCode = postJson(APPS_SCRIPT_URL, payload, response);
+    Serial.print("Kode HTTP pertama: ");
     Serial.println(httpCode);
 
-    if (httpCode > 0) {
-        Serial.println(http.getString());
-    } else {
-        Serial.print("Request gagal: ");
-        Serial.println(http.errorToString(httpCode));
+    // Apps Script Web App SELALU balas 302 dulu (redirect ke domain googleusercontent.com
+    // tempat script-nya benar-benar jalan). HTTPClient ESP32 punya bug kalau redirect
+    // di-follow otomatis (salah kirim Content-Length, bikin Google balas 400) -- makanya
+    // redirect-nya kita tangani manual: request baru bersih ke URL hasil redirect.
+    if (httpCode == 302) {
+        String redirectUrl = response;
+        Serial.print("Redirect ke: ");
+        Serial.println(redirectUrl);
+        httpCode = postJson(redirectUrl, payload, response);
+        Serial.print("Kode HTTP setelah redirect: ");
+        Serial.println(httpCode);
     }
 
-    http.end();
+    if (httpCode == 200) {
+        Serial.println(response);
+    } else {
+        Serial.println("Gagal, respons:");
+        Serial.println(response);
+    }
+
     return httpCode == 200;
 }
 
