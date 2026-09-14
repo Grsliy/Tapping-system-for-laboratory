@@ -1,6 +1,6 @@
 # Hari 4 — Integrasi RFID
 
-Langkah kerja Hari 4 dari milestone di [Sistem-Logbook-Pengunjung-RFID](../Dokumen/Sistem-Logbook-Pengunjung-RFID.md#milestone-5-hari). Board: ESP32-C3 SuperMini + MFRC522.
+Langkah kerja Hari 4 dari rencana kerja di [Sistem-Logbook-Pengunjung-RFID](../Dokumen/Sistem-Logbook-Pengunjung-RFID.md#status-dan-rencana-kerja). Board: ESP32-C3 SuperMini + MFRC522.
 
 ## Goals hari ini
 

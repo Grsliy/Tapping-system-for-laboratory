@@ -1,6 +1,6 @@
 # Hari 3 — ESP32-C3 connect WiFi + HTTPS ke Apps Script
 
-Langkah kerja Hari 3 dari milestone di [Sistem-Logbook-Pengunjung-RFID](../Dokumen/Sistem-Logbook-Pengunjung-RFID.md#milestone-5-hari). Board: ESP32-C3 SuperMini.
+Langkah kerja Hari 3 dari rencana kerja di [Sistem-Logbook-Pengunjung-RFID](../Dokumen/Sistem-Logbook-Pengunjung-RFID.md#status-dan-rencana-kerja). Board: ESP32-C3 SuperMini.
 
 ## Goals hari ini
 
