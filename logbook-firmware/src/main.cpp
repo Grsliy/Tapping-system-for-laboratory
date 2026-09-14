@@ -42,9 +42,12 @@
 #define PICC_REQIDL    0x26
 #define PICC_ANTICOLL  0x93
 
-#define MI_OK        0
-#define MI_NOTAGERR  1
-#define MI_ERR       2
+#define MI_OK   0
+#define MI_ERR  2
+
+// MFRC522_ToCard bisa menyalin sampai 16 byte ke buffer balasan, jadi buffer pemanggil
+// harus sebesar ini walau respons normalnya cuma 2-5 byte.
+#define MFRC522_BUF_SIZE 16
 
 // ===== OLED SSD1306 (I2C) =====
 #define OLED_SDA_PIN 0
@@ -61,9 +64,6 @@ bool oledReady = false;
 void oledInit() {
     Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
     oledReady = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-    if (!oledReady) {
-        Serial.println("OLED gagal init, sistem lanjut tanpa layar.");
-    }
 }
 
 void oledShow(const String &line1, uint8_t size1, const String &line2, uint8_t size2) {
@@ -83,20 +83,23 @@ void oledIdle() {
     oledShow("Please", 2, "tap", 2);
 }
 
-// Animasi titik saat menunggu balasan Apps Script. Dijalankan sebagai task terpisah
-// karena postJson/getContent memblokir loop() selama beberapa detik.
+// Animasi titik saat menunggu balasan Apps Script, dijalankan sebagai task terpisah
+// karena request HTTPS memblokir loop() selama beberapa detik.
 volatile bool loadingRun = false;
 volatile bool loadingDone = true;
 
 void loadingTask(void *param) {
-    int dots = 1;
+    static const char *frames[] = {".", "..", "..."};
+    int frame = 0;
+
     while (loadingRun) {
-        oledShow("Checking", 2, String("...").substring(0, dots), 2);
-        dots = (dots % 3) + 1;
+        oledShow("Checking", 2, frames[frame], 2);
+        frame = (frame + 1) % 3;
         for (int i = 0; i < 7 && loadingRun; i++) {
-            vTaskDelay(pdMS_TO_TICKS(50));
+            vTaskDelay(pdMS_TO_TICKS(50)); // dipecah kecil supaya loadingStop() cepat
         }
     }
+
     loadingDone = true;
     vTaskDelete(NULL);
 }
@@ -108,73 +111,48 @@ void loadingStart() {
     xTaskCreate(loadingTask, "loading", 4096, NULL, 1, NULL);
 }
 
+// Task menghapus dirinya sendiri setelah frame terakhir selesai. Menghapusnya dari luar
+// berisiko memotong transfer I2C di tengah jalan dan menggantungkan bus.
 void loadingStop() {
     loadingRun = false;
     while (!loadingDone) delay(10);
 }
 
 void connectWiFi() {
-    Serial.println("Menyambungkan ke WiFi...");
-
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    Serial.print("Menyambungkan");
     int timeoutCount = 0;
     while (WiFi.status() != WL_CONNECTED && timeoutCount < 40) {
         delay(500);
-        Serial.print(".");
         timeoutCount++;
     }
-    Serial.println();
 
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.print("GAGAL connect WiFi. Kode status: ");
-        Serial.println(WiFi.status());
-        return;
-    }
-
-    Serial.print("Terhubung! IP device: ");
-    Serial.println(WiFi.localIP());
-    wifiReady = true;
+    wifiReady = (WiFi.status() == WL_CONNECTED);
 }
 
-// Kirim POST JSON ke url, balikin kode HTTP-nya lewat responseOut.
-int postJson(const String &url, const String &payload, String &responseOut) {
+// payload kosong berarti GET, selain itu POST JSON. Balasan 302 mengisi responseOut
+// dengan URL redirect-nya, bukan body.
+int httpRequest(const String &url, const String &payload, String &responseOut) {
     WiFiClientSecure client;
     client.setInsecure(); // Apps Script sudah HTTPS domain Google
 
     HTTPClient http;
     http.setTimeout(15000);
     http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
 
-    int httpCode = http.POST(payload);
-    if (httpCode > 0) {
-        responseOut = http.getString();
+    int httpCode;
+    if (payload.isEmpty()) {
+        httpCode = http.GET();
+    } else {
+        http.addHeader("Content-Type", "application/json");
+        httpCode = http.POST(payload);
     }
-
-    String location = http.getLocation();
-    http.end();
 
     if (httpCode == 302) {
-        responseOut = location;
-    }
-
-    return httpCode;
-}
-
-int getContent(const String &url, String &responseOut) {
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient http;
-    http.setTimeout(15000);
-    http.begin(client, url);
-
-    int httpCode = http.GET();
-    if (httpCode > 0) {
+        responseOut = http.getLocation();
+    } else if (httpCode > 0) {
         responseOut = http.getString();
     }
 
@@ -197,42 +175,17 @@ String jsonField(const String &json, const String &key) {
     return json.substring(q1 + 1, q2);
 }
 
-// Kirim UID hasil tap kartu ke Google Apps Script.
+// POST menjalankan doPost() di sisi Google, GET ke URL redirect-nya yang mengambil hasil.
 bool sendTap(const String &uid, String &responseOut) {
-    if (!wifiReady) {
-        Serial.println("WiFi belum siap, tap dibatalkan.");
-        return false;
-    }
-
-    String payload = "{\"uid\":\"" + uid + "\"}";
-
-    Serial.println("POST ke Apps Script...");
-    int httpCode = postJson(APPS_SCRIPT_URL, payload, responseOut);
-    Serial.print("Kode HTTP pertama: ");
-    Serial.println(httpCode);
+    int httpCode = httpRequest(APPS_SCRIPT_URL, "{\"uid\":\"" + uid + "\"}", responseOut);
 
     if (httpCode == 302) {
         String redirectUrl = responseOut;
-        Serial.print("Redirect ke: ");
-        Serial.println(redirectUrl);
-
-        const int MAX_RETRY = 3;
-        for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-            httpCode = getContent(redirectUrl, responseOut);
-            Serial.print("Kode HTTP setelah redirect (GET), percobaan ");
-            Serial.print(attempt);
-            Serial.print(": ");
-            Serial.println(httpCode);
+        for (int attempt = 0; attempt < 3; attempt++) {
+            httpCode = httpRequest(redirectUrl, "", responseOut);
             if (httpCode == 200) break;
             delay(500);
         }
-    }
-
-    if (httpCode == 200) {
-        Serial.println(responseOut);
-    } else {
-        Serial.println("Gagal, respons:");
-        Serial.println(responseOut);
     }
 
     return httpCode == 200;
@@ -262,23 +215,20 @@ void MFRC522_WriteRegister(uint8_t reg, uint8_t value) {
 }
 
 void MFRC522_SetBitMask(uint8_t reg, uint8_t mask) {
-    uint8_t tmp = MFRC522_ReadRegister(reg);
-    MFRC522_WriteRegister(reg, tmp | mask);
+    MFRC522_WriteRegister(reg, MFRC522_ReadRegister(reg) | mask);
 }
 
 void MFRC522_ClearBitMask(uint8_t reg, uint8_t mask) {
-    uint8_t tmp = MFRC522_ReadRegister(reg);
-    MFRC522_WriteRegister(reg, tmp & (~mask));
+    MFRC522_WriteRegister(reg, MFRC522_ReadRegister(reg) & (~mask));
 }
 
 void MFRC522_AntennaOn() {
-    uint8_t temp = MFRC522_ReadRegister(MFRC522_REG_TXCONTROL);
-    if (!(temp & 0x03)) {
+    if (!(MFRC522_ReadRegister(MFRC522_REG_TXCONTROL) & 0x03)) {
         MFRC522_SetBitMask(MFRC522_REG_TXCONTROL, 0x03);
     }
 }
 
-void MFRC522_Init() {
+bool MFRC522_Init() {
     pinMode(RFID_CS_PIN, OUTPUT);
     pinMode(RFID_RST_PIN, OUTPUT);
     digitalWrite(RFID_CS_PIN, HIGH);
@@ -299,8 +249,9 @@ void MFRC522_Init() {
 
     MFRC522_AntennaOn();
 
-    Serial.print("MFRC522 Version Reg: 0x");
-    Serial.println(MFRC522_ReadRegister(MFRC522_REG_VERSION), HEX);
+    // 0x00 atau 0xFF berarti modul tidak membalas SPI sama sekali
+    uint8_t version = MFRC522_ReadRegister(MFRC522_REG_VERSION);
+    return version != 0x00 && version != 0xFF;
 }
 
 // Kirim command ke kartu lewat FIFO, ambil balasannya. Dipakai Request & Anticoll.
@@ -339,31 +290,20 @@ uint8_t MFRC522_ToCard(uint8_t command, uint8_t *sendData, uint8_t sendLen, uint
 
     MFRC522_ClearBitMask(MFRC522_REG_BITFRAMING, 0x80);
 
-    if (i != 0) {
-        if (!(MFRC522_ReadRegister(MFRC522_REG_ERROR) & 0x1B)) {
-            status = MI_OK;
-            if (n & irqEn & 0x01) {
-                status = MI_NOTAGERR;
+    if (i != 0 && !(MFRC522_ReadRegister(MFRC522_REG_ERROR) & 0x1B)) {
+        status = (n & irqEn & 0x01) ? MI_ERR : MI_OK;
+
+        if (command == PCD_TRANSCEIVE) {
+            n = MFRC522_ReadRegister(MFRC522_REG_FIFOLEVEL);
+            lastBits = MFRC522_ReadRegister(MFRC522_REG_CONTROL) & 0x07;
+            *backLen = lastBits ? (n - 1) * 8 + lastBits : n * 8;
+
+            if (n == 0) n = 1;
+            if (n > MFRC522_BUF_SIZE) n = MFRC522_BUF_SIZE;
+
+            for (i = 0; i < n; i++) {
+                backData[i] = MFRC522_ReadRegister(MFRC522_REG_FIFODATA);
             }
-
-            if (command == PCD_TRANSCEIVE) {
-                n = MFRC522_ReadRegister(MFRC522_REG_FIFOLEVEL);
-                lastBits = MFRC522_ReadRegister(MFRC522_REG_CONTROL) & 0x07;
-                if (lastBits) {
-                    *backLen = (n - 1) * 8 + lastBits;
-                } else {
-                    *backLen = n * 8;
-                }
-
-                if (n == 0) n = 1;
-                if (n > 16) n = 16;
-
-                for (i = 0; i < n; i++) {
-                    backData[i] = MFRC522_ReadRegister(MFRC522_REG_FIFODATA);
-                }
-            }
-        } else {
-            status = MI_ERR;
         }
     }
 
@@ -372,25 +312,18 @@ uint8_t MFRC522_ToCard(uint8_t command, uint8_t *sendData, uint8_t sendLen, uint
 
 // Cek apakah ada kartu di area antena (REQA)
 uint8_t MFRC522_Request(uint8_t reqMode, uint8_t *TagType) {
-    uint8_t status;
     uint16_t backBits;
 
     MFRC522_WriteRegister(MFRC522_REG_BITFRAMING, 0x07);
 
     TagType[0] = reqMode;
-    status = MFRC522_ToCard(PCD_TRANSCEIVE, TagType, 1, TagType, &backBits);
+    uint8_t status = MFRC522_ToCard(PCD_TRANSCEIVE, TagType, 1, TagType, &backBits);
 
-    if ((status != MI_OK) || (backBits != 0x10)) {
-        status = MI_ERR;
-    }
-
-    return status;
+    return (status == MI_OK && backBits == 0x10) ? MI_OK : MI_ERR;
 }
 
 // Ambil UID kartu (anticollision cascade level 1)
 uint8_t MFRC522_Anticoll(uint8_t *serNum) {
-    uint8_t status;
-    uint8_t i;
     uint8_t serNumCheck = 0;
     uint16_t unLen;
 
@@ -398,10 +331,10 @@ uint8_t MFRC522_Anticoll(uint8_t *serNum) {
 
     serNum[0] = PICC_ANTICOLL;
     serNum[1] = 0x20;
-    status = MFRC522_ToCard(PCD_TRANSCEIVE, serNum, 2, serNum, &unLen);
+    uint8_t status = MFRC522_ToCard(PCD_TRANSCEIVE, serNum, 2, serNum, &unLen);
 
     if (status == MI_OK) {
-        for (i = 0; i < 4; i++) {
+        for (uint8_t i = 0; i < 4; i++) {
             serNumCheck ^= serNum[i];
         }
         if (serNumCheck != serNum[4]) {
@@ -420,21 +353,20 @@ String uidToString(uint8_t *serNum) {
 }
 
 void setup() {
-    Serial.begin(115200);
-    delay(100);
-
     oledInit();
     oledShow("WiFi", 2, "connecting...", 1);
-
     connectWiFi();
-    MFRC522_Init();
 
-    Serial.println("Siap. Tempelkan kartu...");
+    if (!MFRC522_Init()) {
+        oledShow("RFID", 2, "check wiring", 1);
+        while (true) delay(1000);
+    }
+
     oledIdle();
 }
 
 void loop() {
-    if (!wifiReady) {
+    if (!wifiReady || WiFi.status() != WL_CONNECTED) {
         oledShow("No WiFi", 2, "reconnecting...", 1);
         connectWiFi();
         delay(2000);
@@ -442,32 +374,29 @@ void loop() {
         return;
     }
 
-    uint8_t TagType[2];
-    uint8_t serNum[5];
+    uint8_t TagType[MFRC522_BUF_SIZE];
+    uint8_t serNum[MFRC522_BUF_SIZE];
 
-    if (MFRC522_Request(PICC_REQIDL, TagType) == MI_OK) {
-        if (MFRC522_Anticoll(serNum) == MI_OK) {
-            String uid = uidToString(serNum);
-            Serial.print("Kartu terdeteksi, UID: ");
-            Serial.println(uid);
+    if (MFRC522_Request(PICC_REQIDL, TagType) == MI_OK && MFRC522_Anticoll(serNum) == MI_OK) {
+        String uid = uidToString(serNum);
+        String response;
 
-            String response;
-            loadingStart();
-            String status = sendTap(uid, response) ? jsonField(response, "status") : "";
-            loadingStop();
+        loadingStart();
+        String status = sendTap(uid, response) ? jsonField(response, "status") : "";
+        loadingStop();
 
-            if (status == "OK") {
-                String nama = jsonField(response, "nama");
-                oledShow("Welcome", 2, nama, nama.length() > 10 ? 1 : 2);
-            } else if (status == "REJECTED") {
-                oledShow(uid, 2, "please register", 1);
-            } else {
-                oledShow("Error", 2, "please retry", 1);
-            }
-
-            delay(7000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
-            oledIdle();
+        if (status == "OK") {
+            String nama = jsonField(response, "nama");
+            oledShow("Welcome", 2, nama, nama.length() > 10 ? 1 : 2);
+        } else if (status == "REJECTED") {
+            oledShow(uid, 2, "please register", 1);
+        } else {
+            oledShow("Error", 2, "please retry", 1);
+            wifiReady = false; // gagal di level jaringan, sambung ulang sebelum tap berikutnya
         }
+
+        delay(7000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
+        oledIdle();
     }
 
     delay(100);
