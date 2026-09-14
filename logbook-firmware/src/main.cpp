@@ -465,7 +465,7 @@ void loop() {
                 oledShow("Error", 2, "please retry", 1);
             }
 
-            delay(3000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
+            delay(7000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
             oledIdle();
         }
     }
