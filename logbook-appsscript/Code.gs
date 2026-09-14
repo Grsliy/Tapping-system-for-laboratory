@@ -44,6 +44,23 @@ function doPost(e) {
 
   var sheetLog = ss.getSheetByName("Log_Kunjungan");
   var waktu = new Date();
+
+  // Cegah duplikat -- Google kadang eksekusi ulang request yang sama di level
+  // infrastrukturnya sendiri (retry internal), bukan berarti device kirim dua kali.
+  // Kalau UID yang sama sudah tercatat dalam 10 detik terakhir, anggap request ini
+  // duplikat dari eksekusi yang sama, jangan dicatat ulang.
+  var DEDUP_WINDOW_MS = 10000;
+  var logData = sheetLog.getDataRange().getValues();
+  for (var j = logData.length - 1; j >= 1; j--) {
+    if (String(logData[j][0]) !== String(uid)) continue;
+    var lastWaktu = new Date(logData[j][3]);
+    if (waktu.getTime() - lastWaktu.getTime() < DEDUP_WINDOW_MS) {
+      return ContentService.createTextOutput(JSON.stringify({status: "OK", nama: found[1], waktu: waktu.toString(), note: "duplikat diabaikan"}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    break; // cuma cek kemunculan UID ini yang paling akhir, tidak perlu scan semua baris
+  }
+
   sheetLog.appendRow([uid, found[1], found[3], waktu]);
 
   return ContentService.createTextOutput(JSON.stringify({status: "OK", nama: found[1], waktu: waktu.toString()}))
