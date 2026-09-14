@@ -139,13 +139,26 @@ bool sendTap(const String &uid) {
     // tempat script-nya benar-benar jalan). HTTPClient ESP32 punya bug kalau redirect
     // di-follow otomatis (salah kirim Content-Length, bikin Google balas 400) -- makanya
     // redirect-nya kita tangani manual: request baru bersih ke URL hasil redirect.
+    //
+    // Catatan: tap sudah TERCATAT di Sheet begitu request POST pertama berhasil (302
+    // diterima) -- bagian di bawah ini cuma buat AMBIL BALASANNYA, bukan mengulang aksinya.
+    // Kalau ini gagal (mis. hiccup TLS sesaat), coba beberapa kali sebelum menyerah, supaya
+    // device tidak salah lapor "gagal" padahal datanya sudah masuk.
     if (httpCode == 302) {
         String redirectUrl = response;
         Serial.print("Redirect ke: ");
         Serial.println(redirectUrl);
-        httpCode = getContent(redirectUrl, response);
-        Serial.print("Kode HTTP setelah redirect (GET): ");
-        Serial.println(httpCode);
+
+        const int MAX_RETRY = 3;
+        for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+            httpCode = getContent(redirectUrl, response);
+            Serial.print("Kode HTTP setelah redirect (GET), percobaan ");
+            Serial.print(attempt);
+            Serial.print(": ");
+            Serial.println(httpCode);
+            if (httpCode == 200) break;
+            delay(500);
+        }
     }
 
     if (httpCode == 200) {
