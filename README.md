@@ -11,6 +11,8 @@ sudah terdaftar tinggal tap kartu RFID di pintu masuk, tanpa perlu isi buku tamu
 3. ESP32 membaca UID kartu dan mengirimkannya ke Google Apps Script lewat HTTPS.
 4. Apps Script mencocokkan UID ke daftar pengunjung terdaftar, lalu mencatat waktu tap ke
    Google Sheet.
+5. Layar pada perangkat menyapa pengunjung dengan namanya, atau memberi tahu bahwa kartunya
+   belum terdaftar.
 
 Rincian tiap langkah ada di bagian [Cara Kerja](Dokumen/Sistem-Logbook-Pengunjung-RFID.md#cara-kerja)
 di dokumen utama.
@@ -21,6 +23,9 @@ di dokumen utama.
 
 ESP32 membaca UID kartu lewat modul MFRC522, connect ke jaringan WiFi kampus, lalu
 mengirim data tap ke Google Apps Script yang mencocokkan dan mencatatnya ke Google Sheet.
+Hasilnya ditampilkan di layar OLED pada perangkat, sehingga alat ini berdiri sendiri di
+pintu masuk tanpa komputer yang tersambung.
+
 Detail lengkap arsitektur, varian ESP32 yang dipakai, keputusan teknis, dan skema data ada
 di [Dokumen/Sistem-Logbook-Pengunjung-RFID](Dokumen/Sistem-Logbook-Pengunjung-RFID.md).
 
