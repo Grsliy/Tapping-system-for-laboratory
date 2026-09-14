@@ -27,18 +27,7 @@ jadi sistem ini mencatat kehadiran saja, tanpa menghitung durasi kunjungan.
 
 ## Arsitektur
 
-```
-[Kartu RFID pengunjung]
-        |  (tap)
-        v
-[MFRC522] --SPI--> [ESP32-C3 SuperMini]
-                        |  (WiFi + internet, HTTPS)
-                        v
-              [Google Apps Script (Web App)]
-                        |
-                        v
-              [Google Sheet: Pengunjung + Log_Kunjungan]
-```
+![Arsitektur sistem: Kartu RFID ke MFRC522 ke ESP32-C3 ke Google Apps Script ke Google Sheet](../arsitektur.png)
 
 - **MFRC522** membaca UID kartu lewat SPI.
 - **ESP32-C3 SuperMini** membaca UID dari MFRC522, terhubung ke WiFi UGM-IoT (WPA2-PSK),
