@@ -32,6 +32,9 @@ jadi sistem ini mencatat kehadiran saja, tanpa menghitung durasi kunjungan.
 - **MFRC522** membaca UID kartu lewat SPI.
 - **ESP32-C3 SuperMini** membaca UID dari MFRC522, terhubung ke WiFi UGM-IoT (WPA2-PSK),
   dan mengirim UID ke Apps Script lewat HTTPS setiap ada tap.
+- **OLED SSD1306 128x64** terhubung ke ESP32 lewat I2C, menampilkan hasil tap kepada
+  pengunjung di pintu masuk. Perangkat tetap mencatat tap ke Sheet walaupun layarnya gagal
+  diinisialisasi.
 - **Google Apps Script** menerima UID, mencocokkannya ke Sheet `Pengunjung`, mencatat ke
   Sheet `Log_Kunjungan` kalau valid, dan membalas status ke ESP32.
 - **Google Sheet** menyimpan dua tab: `Pengunjung` untuk data hasil pendaftaran, dan
@@ -43,6 +46,39 @@ itu diganti Google Sheets dan Apps Script karena dua alasan: komputer lab pakai 
 sedangkan device pakai WiFi, jadi keduanya sulit disatukan dalam satu jaringan; dan Apps
 Script Web App punya URL tetap yang bisa diakses dari jaringan mana pun asal ada internet,
 tanpa perlu komputer yang menyala terus-menerus.
+
+## Pinout
+
+**MFRC522 — SPI**
+
+| MFRC522 | ESP32-C3 |
+|---|---|
+| VCC | 3.3V |
+| GND | GND |
+| SCK | GPIO4 |
+| MISO | GPIO5 |
+| MOSI | GPIO6 |
+| SDA (CS) | GPIO7 |
+| RST | GPIO10 |
+| IRQ | tidak disambung |
+
+**OLED SSD1306 — I2C, alamat `0x3C`**
+
+| OLED | ESP32-C3 |
+|---|---|
+| VCC | 3.3V |
+| GND | GND |
+| SDA | GPIO0 |
+| SCL | GPIO1 |
+
+GPIO8 dan GPIO9 tidak digunakan walaupun keduanya pin I2C default ESP32-C3. Pada board
+SuperMini, GPIO8 tersambung ke LED onboard dan GPIO9 ke tombol BOOT, dan keduanya pin
+strapping yang ikut menentukan mode boot chip. GPIO0 dan GPIO1 bebas dari fungsi tersebut,
+sehingga lebih aman untuk perangkat yang dipasang permanen.
+
+Kedua modul mengambil daya dari jalur 3.3V yang sama. Gunakan rail pada breadboard, jangan
+menumpuk dua kabel pada satu lubang pin. Nilai pin di atas didefinisikan di bagian atas
+[logbook-firmware/src/main.cpp](../logbook-firmware/src/main.cpp).
 
 ## Skema Data
 
@@ -96,16 +132,36 @@ Sistem tap-in sudah berjalan penuh dari kartu fisik sampai tercatat di Sheet.
 | 2 | Form pendaftaran pengunjung | Dilewati — admin mendaftarkan pengunjung langsung ke Sheet |
 | 3 | ESP32 connect WiFi + HTTPS ke Apps Script | Selesai — [detail](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md) |
 | 4 | Integrasi pembaca RFID | Selesai — [detail](../Tutorial/Hari-4-Integrasi-RFID.md) |
-| 5 | Uji kasus tidak biasa, dokumentasi akhir | Belum mulai |
+| 5 | Umpan balik OLED untuk pengunjung | Selesai — [detail](../Tutorial/Hari-5-Umpan-Balik-OLED.md) |
+| 6 | Uji kasus tidak biasa, dokumentasi akhir | Belum mulai |
 
-Beberapa kendala teknis khusus ESP32-C3 SuperMini ditemukan dan diperbaiki selama Hari 3–4
-(Serial Monitor tidak menampilkan output, bug redirect di HTTPClient, duplikat request dari
-Google, USB yang perlu dicabut-pasang ulang setelah upload) — detail lengkap tiap kendala
-ada di Tutorial masing-masing hari.
+Beberapa kendala teknis ditemukan dan diperbaiki sepanjang Hari 3 sampai 5: Serial Monitor
+yang tidak menampilkan output, bug redirect di HTTPClient, duplikat request dari infrastruktur
+Google, USB yang perlu dicabut-pasang ulang setelah upload, penyambungan ulang WiFi yang
+berulang, dan rantai redirect yang tidak pernah diikuti sampai habis. Detail tiap kendala
+beserta perbaikannya ada di Tutorial masing-masing hari.
 
-Yang masih tersisa:
+## Riwayat Rilis
 
-- Persetujuan akses WiFi UGM-IoT dari departemen. Sistem sudah tervalidasi lewat hotspot
-  HP sementara, jadi ini tidak menghambat pengembangan, tapi perlu selesai sebelum
-  pemasangan permanen di lab.
-- Uji kasus tidak biasa: kartu tidak terdaftar, koneksi WiFi putus sesaat.
+| Versi | Isi |
+|---|---|
+| v1.0 | Tap-in RFID sampai tercatat di Google Sheet |
+| v1.1 | Umpan balik status di layar OLED |
+
+Perubahan setelah v1.1 belum masuk rilis bertanda: animasi bongo cat, perbaikan dua bug
+jaringan, dan layar diagnosis kegagalan. Semuanya terurai di
+[Tutorial/Hari-5-Umpan-Balik-OLED](../Tutorial/Hari-5-Umpan-Balik-OLED.md).
+
+## Yang Masih Terbuka
+
+- **Jaringan untuk pemasangan permanen.** Sistem memerlukan resolusi DNS dan akses HTTPS ke
+  `script.google.com` beserta `script.googleusercontent.com`. Domain kedua mudah terlewat
+  saat mengajukan izin akses, padahal balasan Apps Script diambil dari sana — tanpa akses ke
+  situ, tap tetap tercatat di Sheet tapi perangkat tidak pernah menerima konfirmasinya. Salah
+  satu jaringan yang dicoba memblokir kueri DNS ke luar, dan perangkat mengenalinya sendiri
+  sebagai `DNS block`.
+- **Uji koneksi WiFi yang putus di tengah pengiriman.** Kartu tidak terdaftar sudah diuji di
+  Hari 4 dan berperilaku benar.
+- **Penanganan tap yang gagal terkirim.** Saat ini kunjungan yang gagal dikirim hilang begitu
+  saja. Mengantrekannya lalu mengirim ulang setelah jaringan pulih akan membuat sistem jauh
+  lebih tahan terhadap gangguan sesaat.
