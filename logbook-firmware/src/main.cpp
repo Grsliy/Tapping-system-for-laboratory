@@ -5,6 +5,9 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Adafruit_SSD1306.h>
+#include <esp_netif.h>
+
+#include "bongo.h"
 
 #include "secrets.h"
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
@@ -58,6 +61,7 @@
 
 Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
 
+IPAddress dhcpDns;
 bool wifiReady = false;
 bool oledReady = false;
 
@@ -79,8 +83,33 @@ void oledShow(const String &line1, uint8_t size1, const String &line2, uint8_t s
     display.display();
 }
 
-void oledIdle() {
-    oledShow("Please", 2, "tap", 2);
+// Satu frame kucing di paruh atas layar, teks di bawahnya.
+void oledCat(const unsigned char *frame, const char *caption, int16_t captionX) {
+    if (!oledReady) return;
+
+    display.clearDisplay();
+    display.drawBitmap(0, 0, frame, BONGO_WIDTH, BONGO_HEIGHT, SSD1306_WHITE);
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(2);
+    display.setCursor(captionX, 44);
+    display.print(caption);
+    display.display();
+}
+
+void oledIdle(uint8_t frame = 0) {
+    oledCat(bongoIdle[frame % BONGO_IDLE_FRAMES], "Please tap", 4);
+}
+
+// Dipanggil tiap putaran loop() saat tidak ada kartu; frame baru digambar tiap 400 ms.
+void oledIdleAnimate() {
+    static uint32_t lastFrame = 0;
+    static uint8_t frame = 0;
+
+    if (millis() - lastFrame < 220) return;
+
+    lastFrame = millis();
+    frame = (frame + 1) % BONGO_IDLE_FRAMES;
+    oledIdle(frame);
 }
 
 // Animasi titik saat menunggu balasan Apps Script, dijalankan sebagai task terpisah
@@ -89,13 +118,12 @@ volatile bool loadingRun = false;
 volatile bool loadingDone = true;
 
 void loadingTask(void *param) {
-    static const char *frames[] = {".", "..", "..."};
-    int frame = 0;
+    uint8_t frame = 0;
 
     while (loadingRun) {
-        oledShow("Checking", 2, frames[frame], 2);
-        frame = (frame + 1) % 3;
-        for (int i = 0; i < 7 && loadingRun; i++) {
+        oledCat(bongoTap[frame], "Checking", 16);
+        frame = (frame + 1) % BONGO_TAP_FRAMES;
+        for (int i = 0; i < 3 && loadingRun; i++) {
             vTaskDelay(pdMS_TO_TICKS(50)); // dipecah kecil supaya loadingStop() cepat
         }
     }
@@ -118,6 +146,23 @@ void loadingStop() {
     while (!loadingDone) delay(10);
 }
 
+// Cadangan kalau DHCP tidak memberi alamat DNS sama sekali. Jaringan yang memblokir DNS
+// ke luar tetap harus memakai resolver sendiri, jadi ini tidak dipasang kalau DHCP
+// sudah memberi alamat. Lewat esp_netif, bukan WiFi.config(), supaya IP tetap dari DHCP.
+void setPublicDns() {
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif == NULL) return;
+
+    esp_netif_dns_info_t dns = {};
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
+
+    dns.ip.u_addr.ip4.addr = (uint32_t)IPAddress(8, 8, 8, 8);
+    esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns);
+
+    dns.ip.u_addr.ip4.addr = (uint32_t)IPAddress(1, 1, 1, 1);
+    esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns);
+}
+
 void connectWiFi() {
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
@@ -130,6 +175,10 @@ void connectWiFi() {
     }
 
     wifiReady = (WiFi.status() == WL_CONNECTED);
+    if (wifiReady) {
+        dhcpDns = WiFi.dnsIP();
+        if (dhcpDns == IPAddress(0, 0, 0, 0)) setPublicDns();
+    }
 }
 
 // payload kosong berarti GET, selain itu POST JSON. Balasan 302 mengisi responseOut
@@ -176,19 +225,20 @@ String jsonField(const String &json, const String &key) {
 }
 
 // POST menjalankan doPost() di sisi Google, GET ke URL redirect-nya yang mengambil hasil.
-bool sendTap(const String &uid, String &responseOut) {
+int sendTap(const String &uid, String &responseOut) {
     int httpCode = httpRequest(APPS_SCRIPT_URL, "{\"uid\":\"" + uid + "\"}", responseOut);
 
-    if (httpCode == 302) {
-        String redirectUrl = responseOut;
-        for (int attempt = 0; attempt < 3; attempt++) {
-            httpCode = httpRequest(redirectUrl, "", responseOut);
-            if (httpCode == 200) break;
-            delay(500);
-        }
+    // POST-nya tidak pernah diulang: sekali kirim sudah menjalankan doPost() dan menulis
+    // ke Sheet, mengulangnya akan menghasilkan baris ganda. Yang diulang hanya GET-nya.
+    for (int attempt = 0; attempt < 4 && httpCode != 200; attempt++) {
+        String next = responseOut; // diisi Location saat 302, tetap saat gagal
+        if (next.isEmpty()) break;
+
+        if (httpCode != 302) delay(500); // bukan redirect, berarti kegagalan sesaat
+        httpCode = httpRequest(next, "", responseOut);
     }
 
-    return httpCode == 200;
+    return httpCode;
 }
 
 // ===== Driver MFRC522 =====
@@ -382,21 +432,45 @@ void loop() {
         String response;
 
         loadingStart();
-        String status = sendTap(uid, response) ? jsonField(response, "status") : "";
+        int httpCode = sendTap(uid, response);
         loadingStop();
+
+        String status = (httpCode == 200) ? jsonField(response, "status") : "";
 
         if (status == "OK") {
             String nama = jsonField(response, "nama");
             oledShow("Welcome", 2, nama, nama.length() > 10 ? 1 : 2);
         } else if (status == "REJECTED") {
             oledShow(uid, 2, "please register", 1);
+        } else if (httpCode <= 0) {
+            // pisahkan tiga sebab: nama gagal diterjemahkan, DNS diblokir walau internet
+            // jalan, atau memang tidak ada jalur internet sama sekali
+            IPAddress resolved;
+            bool dnsOk = WiFi.hostByName("script.google.com", resolved);
+
+            WiFiClient probe;
+            bool netOk = probe.connect(IPAddress(1, 1, 1, 1), 443, 3000);
+            probe.stop();
+
+            // baris kedua menyesuaikan: kode error kalau DNS beres, alamat resolver
+            // kalau DNS-nya yang bermasalah
+            // dnsOk lewat UDP, netOk lewat TCP -- keduanya gagal bersamaan berarti jaringan,
+            // hanya TCP yang gagal berarti socket habis atau TCP keluar diblokir
+            const char *reason;
+            if (!dnsOk) reason = netOk ? "DNS block" : "Offline";
+            else        reason = netOk ? "No route" : "TCP fail";
+            String detail = dnsOk ? "code " + String(httpCode) + " ram " +
+                                        String(ESP.getFreeHeap() / 1024) + "k"
+                                  : "dns " + dhcpDns.toString();
+            oledShow(reason, 2, detail, 1);
         } else {
-            oledShow("Error", 2, "please retry", 1);
-            wifiReady = false; // gagal di level jaringan, sambung ulang sebelum tap berikutnya
+            oledShow("Error", 2, "HTTP " + String(httpCode), 1);
         }
 
         delay(7000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
         oledIdle();
+    } else {
+        oledIdleAnimate();
     }
 
     delay(100);
