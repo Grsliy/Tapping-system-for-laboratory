@@ -18,3 +18,10 @@ logbook-firmware/src/secrets.h
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# KiCad: riwayat lokal, backup otomatis, dan setelan tampilan per pengguna
+PCB/.history/
+PCB/*-backups/
+*.kicad_prl
+fp-info-cache
+*.lck
