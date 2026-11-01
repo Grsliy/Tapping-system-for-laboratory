@@ -52,6 +52,12 @@
 // harus sebesar ini walau respons normalnya cuma 2-5 byte.
 #define MFRC522_BUF_SIZE 16
 
+// ===== LED status tap =====
+// GPIO20/21 adalah UART0, bebas karena Serial lewat USB CDC. ROM bootloader tetap mengirim
+// log boot ke GPIO21, jadi LED hijau sempat berkedip sesaat saat perangkat dinyalakan.
+#define LED_OK_PIN       21 // hijau: tap tercatat
+#define LED_REJECTED_PIN 20 // merah: kartu belum terdaftar
+
 // ===== OLED SSD1306 (I2C) =====
 #define OLED_SDA_PIN 0
 #define OLED_SCL_PIN 1
@@ -64,6 +70,29 @@ Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
 IPAddress dhcpDns;
 bool wifiReady = false;
 bool oledReady = false;
+
+void ledInit() {
+    pinMode(LED_OK_PIN, OUTPUT);
+    pinMode(LED_REJECTED_PIN, OUTPUT);
+    digitalWrite(LED_OK_PIN, LOW);
+    digitalWrite(LED_REJECTED_PIN, LOW);
+}
+
+void ledOff() {
+    digitalWrite(LED_OK_PIN, LOW);
+    digitalWrite(LED_REJECTED_PIN, LOW);
+}
+
+// Pengganti delay() saat pesan error ditahan di layar: merah berkedip, beda dari merah
+// menyala tetap yang berarti kartu belum terdaftar.
+void ledBlinkRejected(uint32_t durationMs) {
+    uint32_t start = millis();
+    while (millis() - start < durationMs) {
+        digitalWrite(LED_REJECTED_PIN, !digitalRead(LED_REJECTED_PIN));
+        delay(250);
+    }
+    digitalWrite(LED_REJECTED_PIN, LOW);
+}
 
 void oledInit() {
     Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
@@ -403,6 +432,7 @@ String uidToString(uint8_t *serNum) {
 }
 
 void setup() {
+    ledInit();
     oledInit();
     oledShow("WiFi", 2, "connecting...", 1);
     connectWiFi();
@@ -440,8 +470,10 @@ void loop() {
         if (status == "OK") {
             String nama = jsonField(response, "nama");
             oledShow("Welcome", 2, nama, nama.length() > 10 ? 1 : 2);
+            digitalWrite(LED_OK_PIN, HIGH);
         } else if (status == "REJECTED") {
             oledShow(uid, 2, "please register", 1);
+            digitalWrite(LED_REJECTED_PIN, HIGH);
         } else if (httpCode <= 0) {
             // pisahkan tiga sebab: nama gagal diterjemahkan, DNS diblokir walau internet
             // jalan, atau memang tidak ada jalur internet sama sekali
@@ -467,7 +499,10 @@ void loop() {
             oledShow("Error", 2, "HTTP " + String(httpCode), 1);
         }
 
-        delay(7000); // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
+        // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
+        if (status == "OK" || status == "REJECTED") delay(7000);
+        else ledBlinkRejected(7000);
+        ledOff();
         oledIdle();
     } else {
         oledIdleAnimate();
