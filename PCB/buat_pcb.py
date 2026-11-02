@@ -81,7 +81,8 @@ uR = place('Connector_PinSocket_2.54mm', 'PinSocket_1x08_P2.54mm_Vertical', 'U1R
 # (tepi bawah papan) karena tepat di atasnya ada modul OLED
 j1 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x08_P2.54mm_Horizontal', 'J1', 'RC522', 30.78, 35, 270)
 # J2 header siku, pin rebah ke -x (tepi kiri papan); diputar 180° lalu pad dinomori ulang menurut
-# posisi supaya pin 1 (VCC, pad persegi) tetap di atas
+# posisi supaya pin 1 (pad persegi) tetap di atas. Urutan mengikuti modul OLED yang dipakai:
+# GND, VDD, SCK, SDA (modul lain ada yang VCC, GND, ...; cek label modul sebelum mencolok)
 j2 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x04_P2.54mm_Horizontal', 'J2', 'OLED', 8, 23.78, 180)
 for p in j2.Pads():
     num = 1 + round((pcbnew.ToMM(p.GetPosition().y) - 16.16) / 2.54)
@@ -110,7 +111,7 @@ R = {1: pin(uR, 1, 'MISO'), 2: pin(uR, 2, 'MOSI'), 3: pin(uR, 3, 'CS'),
      6: pin(uR, 6, 'RST'), 7: pin(uR, 7, 'LED_R'), 8: pin(uR, 8, 'LED_G')}
 J1 = {1: pin(j1, 1, 'CS'), 2: pin(j1, 2, 'SCK'), 3: pin(j1, 3, 'MOSI'), 4: pin(j1, 4, 'MISO'),
       6: pin(j1, 6, 'GND'), 7: pin(j1, 7, 'RST'), 8: pin(j1, 8, '3V3')}
-J2 = {1: pin(j2, 1, '3V3'), 2: pin(j2, 2, 'GND'), 3: pin(j2, 3, 'SCL'), 4: pin(j2, 4, 'SDA')}
+J2 = {1: pin(j2, 1, 'GND'), 2: pin(j2, 2, '3V3'), 3: pin(j2, 3, 'SCL'), 4: pin(j2, 4, 'SDA')}
 J3 = {1: pin(j3, 1, 'LED_R_A'), 2: pin(j3, 2, 'LED_G_A'), 3: pin(j3, 3, 'GND')}
 R1 = (pin(r1, 1, 'LED_R'), pin(r1, 2, 'LED_R_A'))
 R2 = (pin(r2, 1, 'LED_G'), pin(r2, 2, 'LED_G_A'))
@@ -123,12 +124,12 @@ print('J1', J1); print('J3', J3); print('R1', R1, 'R2', R2); print('JP', JP)
 # I2C langsung ke kiri
 track('SCL', L[7], J2[3])
 track('SDA', L[8], J2[4])
-# 3V3: ke OLED lewat kiri, ke RC522 lewat bawah modul
-track('3V3', L[3], (8, 11.08), J2[1])
+# 3V3: ke OLED (J2 pin 2) masuk dari kanan, ke RC522 lewat bawah modul
+track('3V3', L[3], (10.6, 11.08), (10.6, 18.70), J2[2])
 track('3V3', L[3], (17.8, 11.08), (17.8, 28.3), (13, 28.3), J1[8])
-# GND: ke OLED dan LED lewat tepi papan, ke RC522 lewat bawah modul
-track('GND', L[2], (2.5, 8.54), (2.5, 18.70), J2[2])
-track('GND', (2.5, 18.70), (2.5, 45), (43.6, 45), J3[3])
+# GND: ke OLED (J2 pin 1) dan LED lewat tepi papan, ke RC522 lewat bawah modul
+track('GND', L[2], (2.5, 8.54), (2.5, 16.16), J2[1])
+track('GND', (2.5, 16.16), (2.5, 45), (43.6, 45), J3[3])
 track('GND', L[2], (19.6, 8.54), (19.6, 30.1), (18.08, 30.1), J1[6])
 # SPI
 track('MISO', R[1], (21.4, 6), (21.4, 32.1), (23.16, 32.1), J1[4])
