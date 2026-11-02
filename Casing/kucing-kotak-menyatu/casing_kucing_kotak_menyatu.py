@@ -125,8 +125,9 @@ OLED_C = (0, 72)                  # modul OLED 27.3x27.8, header di sisi belakan
 OLED_WIN = (25, 15)
 OLED_WIN_C = (0, 70.5)
 LEDS = [(-25, 72), (25, 72)]      # kiri hijau (✓), kanan merah (✗), dilihat dari depan
-# PCB compact 46x48 di lantai bak, di bawah area OLED, tepi USB menghadap dinding kanan:
-# u = 23 - y_pcb, v = 49 + x_pcb
+# PCB compact 46x48 di lantai bak (komponen menghadap atas), di bawah area OLED, diputar 90° sehingga
+# tepi USB menghadap dinding kanan dan J1 rebah ke dinding kiri: u = 23 - y_pcb, v = 92.2 - x_pcb.
+# Lubang PCB (2.2, 6) dan (36.95, 33) jatuh tepat di standoff ini (lihat PCB/buat_pcb.py).
 PCB_HOLES = [(17, 90), (-10, 55.25)]
 USB_V, USB_T = 70.6, 17.7         # sumbu konektor USB-C (socket female 8.5 mm + SuperMini)
 LID_SCREWS = [(-33.5, 50), (33.5, 50), (-33.5, 92), (33.5, 92)]
@@ -138,7 +139,7 @@ for sx, sy in LID_SCREWS:
 for hx, hy in PCB_HOLES:
     tub += prism(circle(3.0, hx, hy), -0.01, 5)                           # standoff PCB 5 mm
     tub -= prism(circle(1.25, hx, hy), -1, 5.1)
-tub -= Manifold.cube((4 * WALL, 12, 16), True).translate((BOX_W / 2, USB_V, USB_T))   # kabel USB
+tub -= Manifold.cube((4 * WALL, 12, 16), True).translate((BOX_W / 2, USB_V, USB_T))   # kabel USB, dinding kanan
 
 # tutup: muka kotak, t = INNER_H .. INNER_H + LID
 lid = rprism(outline, 0, LID, r_top=2.0)
