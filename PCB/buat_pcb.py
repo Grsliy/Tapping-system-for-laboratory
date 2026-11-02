@@ -1,9 +1,12 @@
 """Bangun PCB single-layer (B.Cu) logbook RFID versi compact, dengan routing manual.
 
-Disesuaikan dengan casing Casing/kucing-kotak-menyatu: PCB di lantai bak, di bawah modul OLED,
-ruang di atas PCB 15.9 mm (di bawah OLED) sampai 20.4 mm (di tempat lain). Karena itu:
-  J1 (RC522) dan J2 (OLED) header siku, pin rebah ke tepi PCB, dupont menjulur keluar papan
-  J3 (LED) tanpa header, kabel LED disolder langsung ke pad
+Disesuaikan dengan casing Casing/kucing-kotak-menyatu yang sudah dicetak: PCB di lantai bak, di
+bawah modul OLED, komponen menghadap atas, tepi USB menghadap dinding kanan bak. Posisi di bak:
+u = 23 - y_pcb, v = 92.2 - x_pcb. Ruang di atas PCB 15.9 mm (di bawah OLED) sampai 20.4 mm. Karena itu:
+  lubang M3 di (2.2, 6) dan (36.95, 33), tepat di atas standoff bak (17, 90) dan (-10, 55.25)
+  J1 (RC522) header siku, pin rebah ke tepi bawah PCB, dupont menjulur ke dinding kiri bak
+  J2 (OLED) dan J3 (LED) tanpa header, kabel disolder langsung ke pad (J2 di bawah modul OLED dan
+  dekat dinding belakang bak, tidak ada ruang untuk dupont)
   JP1 kabel jumper berisolasi di sisi bawah PCB (sisi atas tertutup dupont J1)
 Resistor LED THT tidur di PCB, LED di tutup casing.
 """
@@ -80,14 +83,9 @@ uR = place('Connector_PinSocket_2.54mm', 'PinSocket_1x08_P2.54mm_Vertical', 'U1R
 # J1 pin 1 = SDA RC522 di ujung kanan, pin 8 = 3.3V di ujung kiri; header siku, pin rebah ke +y
 # (tepi bawah papan) karena tepat di atasnya ada modul OLED
 j1 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x08_P2.54mm_Horizontal', 'J1', 'RC522', 30.78, 35, 270)
-# J2 header siku, pin rebah ke -x (tepi kiri papan); diputar 180° lalu pad dinomori ulang menurut
-# posisi supaya pin 1 (pad persegi) tetap di atas. Urutan mengikuti modul OLED yang dipakai:
-# GND, VDD, SCK, SDA (modul lain ada yang VCC, GND, ...; cek label modul sebelum mencolok)
-j2 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x04_P2.54mm_Horizontal', 'J2', 'OLED', 8, 23.78, 180)
-for p in j2.Pads():
-    num = 1 + round((pcbnew.ToMM(p.GetPosition().y) - 16.16) / 2.54)
-    p.SetNumber(str(num))
-    p.SetShape(pcbnew.F_Cu, pcbnew.PAD_SHAPE_RECT if num == 1 else pcbnew.PAD_SHAPE_CIRCLE)
+# J2 ke OLED, tanpa header (kabel disolder langsung). Urutan mengikuti modul OLED yang dipakai:
+# GND, VDD, SCK, SDA (modul lain ada yang VCC, GND, ...; cek label modul sebelum menyambung)
+j2 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x04_P2.54mm_Vertical', 'J2', 'OLED (solder)', 8, 16.16)
 # J3 ke LED di casing: 1 = anoda merah, 2 = anoda hijau, 3 = katoda bersama (GND).
 # Tanpa header: kabel LED disolder langsung, tutup casing terlalu dekat untuk dupont tegak.
 j3 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x03_P2.54mm_Vertical', 'J3', 'LED (solder)', 43.6, 21.24)
@@ -100,7 +98,7 @@ jp1.Flip(jp1.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)
 # Dua pad bernomor sama = disambung kabel, supaya DRC tidak menganggapnya putus
 jp1.SetDuplicatePadNumbersAreJumpers(True)
 jp1.FindPadByNumber('2').SetNumber('1')
-HOLES = [(41, 6), (6.25, 33)]
+HOLES = [(2.2, 6), (36.95, 33)]   # di atas standoff bak yang sudah dicetak
 for i, (x, y) in enumerate(HOLES):
     place('MountingHole', 'MountingHole_3.2mm_M3', f'H{i+1}', 'M3', x, y, pad_d=None)
 
