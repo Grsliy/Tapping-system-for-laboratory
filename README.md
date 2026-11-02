@@ -35,7 +35,14 @@ di [Dokumen/Sistem-Logbook-Pengunjung-RFID](Dokumen/Sistem-Logbook-Pengunjung-RF
 
 - [Dokumen/](Dokumen/) — rancangan sistem, keputusan arsitektur, dan milestone pengerjaan.
 - [Tutorial/](Tutorial/) — panduan langkah kerja per milestone, urut sesuai hari pengerjaan.
-- [Referensi/](Referensi/) — materi pendukung (modul praktikum IoT, datasheet, gambar pinout).
+- [Referensi/](Referensi/) — materi pendukung (modul praktikum IoT, datasheet modul MFRC522).
+- [Gambar/](Gambar/) — foto prototipe, diagram arsitektur, dan skematik rangkaian.
+- [PCB/](PCB/) — PCB satu sisi 46×48 mm: berkas KiCad, Gerber, PDF untuk toner transfer, dan
+  script pembangunnya.
+- [Casing/](Casing/) — casing cetak 3D berbentuk kucing yang memikul kotak elektronik, beserta
+  ilustrasi letak PCB di dalamnya. Model kucingnya remix dari
+  [Cute Cat Phone Holder](https://www.thingiverse.com/thing:7095121) karya ABoyNamedSue
+  (CC BY-SA).
 - [logbook-firmware/](logbook-firmware/) — kode firmware ESP32 (PlatformIO, framework Arduino).
 - [logbook-appsscript/](logbook-appsscript/) — salinan lokal kode Google Apps Script (backend
   yang jalan di Google, dipakai untuk riwayat/backup di luar Apps Script Editor).
