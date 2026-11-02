@@ -5,8 +5,9 @@ bawah modul OLED, komponen menghadap atas, tepi USB menghadap dinding kanan bak.
 u = 23 - y_pcb, v = 92.2 - x_pcb. Ruang di atas PCB 15.9 mm (di bawah OLED) sampai 20.4 mm. Karena itu:
   lubang M3 di (2.2, 6) dan (36.95, 33), tepat di atas standoff bak (17, 90) dan (-10, 55.25)
   J1 (RC522) header siku, pin rebah ke tepi bawah PCB, dupont menjulur ke dinding kiri bak
-  J2 (OLED) dan J3 (LED) tanpa header, kabel disolder langsung ke pad (J2 di bawah modul OLED dan
-  dekat dinding belakang bak, tidak ada ruang untuk dupont)
+  J2 (OLED), J3 (LED merah), dan J4 (LED hijau) tanpa header, kabel disolder langsung ke pad
+  (J2 di bawah modul OLED dan dekat dinding belakang bak, tidak ada ruang untuk dupont)
+  J3 di sisi kanan bak dan J4 di sisi kiri, searah dengan letak LED merah dan hijau di tutup
   JP1 kabel jumper berisolasi di sisi bawah PCB (sisi atas tertutup dupont J1)
 Resistor LED THT tidur di PCB, LED di tutup casing.
 """
@@ -86,9 +87,10 @@ j1 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x08_P2.54mm_Horizontal', 'J
 # J2 ke OLED, tanpa header (kabel disolder langsung). Urutan mengikuti modul OLED yang dipakai:
 # GND, VDD, SCK, SDA (modul lain ada yang VCC, GND, ...; cek label modul sebelum menyambung)
 j2 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x04_P2.54mm_Vertical', 'J2', 'OLED (solder)', 8, 16.16)
-# J3 ke LED di casing: 1 = anoda merah, 2 = anoda hijau, 3 = katoda bersama (GND).
-# Tanpa header: kabel LED disolder langsung, tutup casing terlalu dekat untuk dupont tegak.
-j3 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x03_P2.54mm_Vertical', 'J3', 'LED (solder)', 43.6, 21.24)
+# Pad solder LED (anoda, GND), dipisah supaya masing-masing dekat LED-nya di tutup casing:
+# J3 merah di dekat tepi atas PCB (sisi kanan bak), J4 hijau di dekat tepi bawah (sisi kiri bak).
+j3 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x02_P2.54mm_Vertical', 'J3', 'LED merah (solder)', 41.06, 11, 90)
+j4 = place('Connector_PinHeader_2.54mm', 'PinHeader_1x02_P2.54mm_Vertical', 'J4', 'LED hijau (solder)', 41.06, 38, 90)
 r1 = place('Resistor_THT', 'R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal', 'R1', '220', 33, 17)
 r2 = place('Resistor_THT', 'R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal', 'R2', '220', 32.5, 23.78)
 jp1 = place('Resistor_THT', 'R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal', 'JP1', 'kabel berisolasi', 11.73, 39)
@@ -110,7 +112,8 @@ R = {1: pin(uR, 1, 'MISO'), 2: pin(uR, 2, 'MOSI'), 3: pin(uR, 3, 'CS'),
 J1 = {1: pin(j1, 1, 'CS'), 2: pin(j1, 2, 'SCK'), 3: pin(j1, 3, 'MOSI'), 4: pin(j1, 4, 'MISO'),
       6: pin(j1, 6, 'GND'), 7: pin(j1, 7, 'RST'), 8: pin(j1, 8, '3V3')}
 J2 = {1: pin(j2, 1, 'GND'), 2: pin(j2, 2, '3V3'), 3: pin(j2, 3, 'SCL'), 4: pin(j2, 4, 'SDA')}
-J3 = {1: pin(j3, 1, 'LED_R_A'), 2: pin(j3, 2, 'LED_G_A'), 3: pin(j3, 3, 'GND')}
+J3 = {1: pin(j3, 1, 'LED_R_A'), 2: pin(j3, 2, 'GND')}
+J4 = {1: pin(j4, 1, 'LED_G_A'), 2: pin(j4, 2, 'GND')}
 R1 = (pin(r1, 1, 'LED_R'), pin(r1, 2, 'LED_R_A'))
 R2 = (pin(r2, 1, 'LED_G'), pin(r2, 2, 'LED_G_A'))
 for p in jp1.Pads():
@@ -127,7 +130,8 @@ track('3V3', L[3], (10.6, 11.08), (10.6, 18.70), J2[2])
 track('3V3', L[3], (17.8, 11.08), (17.8, 28.3), (13, 28.3), J1[8])
 # GND: ke OLED (J2 pin 1) dan LED lewat tepi papan, ke RC522 lewat bawah modul
 track('GND', L[2], (2.5, 8.54), (2.5, 16.16), J2[1])
-track('GND', (2.5, 16.16), (2.5, 45), (43.6, 45), J3[3])
+track('GND', (2.5, 16.16), (2.5, 45), (43.6, 45), J4[2])
+track('GND', J4[2], J3[2])
 track('GND', L[2], (19.6, 8.54), (19.6, 30.1), (18.08, 30.1), J1[6])
 # SPI
 track('MISO', R[1], (21.4, 6), (21.4, 32.1), (23.16, 32.1), J1[4])
@@ -138,9 +142,9 @@ track('SCK', JP[1], (28.24, 39), J1[2])
 track('RST', R[6], (26.8, 18.70), (26.8, 26.5), (34, 26.5), (34, 42), (15.54, 42), J1[7])
 # LED status: resistor di PCB, LED di casing lewat J3
 track('LED_R', R[7], (31.6, 21.24), (31.6, 17), R1[0])
-track('LED_R_A', R1[1], (43.6, 17), J3[1])
+track('LED_R_A', R1[1], (41.06, 17), J3[1])
 track('LED_G', R[8], R2[0])
-track('LED_G_A', R2[1], J3[2])
+track('LED_G_A', R2[1], (40.12, 38), J4[1])
 
 # ===== Outline =====
 rect = pcbnew.PCB_SHAPE(b)
@@ -153,9 +157,10 @@ b.Add(rect)
 
 # ===== Label tembaga (dibaca dari sisi bawah) =====
 text('USB', 21.62, 2.3)
-text('LOGBOOK RFID', 38.5, 13)
-text('LED', 39, 29)
-text('RC522', 38.5, 38)
+text('LOGBOOK RFID', 37, 3.2)
+text('MERAH', 36.5, 8)
+text('HIJAU', 37.5, 41.2)
+text('RC522', 38, 43.3)
 text('JP1', 6.3, 39.6)
 text('OLED', 5.4, 27.5, 1.0, 90)
 
