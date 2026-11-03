@@ -16,6 +16,10 @@ import pcbnew
 from pcbnew import VECTOR2I_MM as P, FromMM
 
 out = sys.argv[1]
+# Mode 'milling': routing sama, tapi ground fill disederhanakan untuk software CNC yang hang pada
+# poligon rumit: tanpa teks tembaga, pad GND tersambung penuh (tanpa thermal relief), dan
+# lingkaran dipecah lebih kasar.
+MILLING = len(sys.argv) > 2 and sys.argv[2] == 'milling'
 LIB = r'C:/Program Files/KiCad/10.0/share/kicad/footprints/'
 TRACK_W = 1.0
 PAD_D = 2.0
@@ -25,6 +29,8 @@ b = pcbnew.BOARD()
 ds = b.GetDesignSettings()
 ds.m_MinClearance = FromMM(0.4)
 ds.m_TrackMinWidth = FromMM(0.8)
+if MILLING:
+    ds.m_MaxError = FromMM(0.05)
 ds.SetCopperLayerCount(2)
 
 nets = {}
@@ -156,13 +162,14 @@ rect.SetWidth(FromMM(0.1))
 b.Add(rect)
 
 # ===== Label tembaga (dibaca dari sisi bawah) =====
-text('USB', 21.62, 2.3)
-text('LOGBOOK RFID', 37, 3.2)
-text('MERAH', 36.5, 8)
-text('HIJAU', 37.5, 41.2)
-text('RC522', 38, 43.3)
-text('JP1', 6.3, 39.6)
-text('OLED', 5.4, 27.5, 1.0, 90)
+if not MILLING:
+    text('USB', 21.62, 2.3)
+    text('LOGBOOK RFID', 37, 3.2)
+    text('MERAH', 36.5, 8)
+    text('HIJAU', 37.5, 41.2)
+    text('RC522', 38, 43.3)
+    text('JP1', 6.3, 39.6)
+    text('OLED', 5.4, 27.5, 1.0, 90)
 
 # ===== Ground fill B.Cu =====
 # Jalur GND tetap ada sebagai tulang punggung; fill menyambung semuanya dan mengurangi
@@ -177,7 +184,7 @@ for x, y in [(0, 0), (BOARD_W, 0), (BOARD_W, BOARD_H), (0, BOARD_H)]:
     outline.Append(FromMM(x), FromMM(y))
 zone.SetLocalClearance(FromMM(FILL_CLEARANCE))
 zone.SetMinThickness(FromMM(0.5))
-zone.SetPadConnection(pcbnew.ZONE_CONNECTION_THERMAL)
+zone.SetPadConnection(pcbnew.ZONE_CONNECTION_FULL if MILLING else pcbnew.ZONE_CONNECTION_THERMAL)
 zone.SetThermalReliefGap(FromMM(0.6))
 zone.SetThermalReliefSpokeWidth(FromMM(0.8))
 zone.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
