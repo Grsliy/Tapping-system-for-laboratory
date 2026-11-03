@@ -8,11 +8,15 @@
 #include <esp_netif.h>
 
 #include "bongo.h"
+#include "knight.h"
 
 #include "secrets.h"
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
 // dan isi kredensial WiFi + URL Apps Script asli di situ sebelum build.
 
+#ifndef SPECIAL_UID
+#define SPECIAL_UID "" // secrets.h lama tanpa SPECIAL_UID: semua kartu disapa "Welcome,"
+#endif
 
 // ===== Pin MFRC522 (SPI custom pin, ESP32-C3 GPIO) =====
 #define RFID_SCK_PIN  4
@@ -157,6 +161,88 @@ void oledWelcome(const String &nama, uint32_t durationMs) {
 
         frame = (frame + 1) % BONGO_TAP_FRAMES;
         delay(120);
+    }
+}
+
+// Layar khusus SPECIAL_UID: kucing ksatria di kiri dengan kilau berkedip di ujung pedangnya,
+// sapaan dan nama di kanan. Nama dipotong 14 huruf supaya tidak membungkus ke area gambar.
+// Dibuka dengan animasi pemanggilan: kucing naik dari bawah layar di atas garis lingkaran
+// sihir yang bergeser, diiringi partikel cahaya; teks baru muncul setelah kucing tiba.
+#define SUMMON_MS 1200
+#define GREET_MS  550 // lama "Greetings," diketik (10 huruf x 50 ms) + jeda
+#define SLIDE_MS  400 // lama "Milord" meluncur masuk
+
+void oledLord(const String &nama, uint32_t durationMs) {
+    if (!oledReady) {
+        delay(durationMs);
+        return;
+    }
+
+    String shortName = nama.substring(0, 14);
+    uint32_t start = millis();
+
+    while (millis() - start < durationMs) {
+        uint32_t t = millis() - start;
+        display.clearDisplay();
+
+        if (t < SUMMON_MS) {
+            // ease-out: cepat di awal, melambat saat hampir tiba
+            float p = (float)t / SUMMON_MS;
+            float eased = 1.0f - (1.0f - p) * (1.0f - p);
+            int16_t y = KNIGHT_HEIGHT - (int16_t)(eased * KNIGHT_HEIGHT);
+            display.drawBitmap(2, y, knightCat, KNIGHT_WIDTH, KNIGHT_HEIGHT, SSD1306_WHITE);
+
+            // lingkaran sihir dilihat dari samping: garis putus-putus di dasar yang bergeser
+            for (int16_t x = (t / 40) % 4; x < 36; x += 4) {
+                display.drawFastHLine(x, 63, 2, SSD1306_WHITE);
+            }
+            display.drawFastHLine(0, 62, 36, SSD1306_WHITE);
+            // partikel cahaya di bawah kucing, posisi acak tiap frame
+            for (int i = 0; i < 6; i++) {
+                display.drawPixel(random(0, 36), random(y, 62), SSD1306_WHITE);
+            }
+            display.display();
+            delay(30);
+            continue;
+        }
+
+        // teks masuk bergiliran: "Greetings," diketik, "Milord" meluncur dari kanan, lalu nama
+        uint32_t since = t - SUMMON_MS;
+        const String greeting = "Greetings,";
+        size_t greetShown = min((size_t)(since / 50), (size_t)greeting.length());
+
+        int16_t lordX = OLED_WIDTH;
+        if (since > GREET_MS) {
+            float p = min(1.0f, (float)(since - GREET_MS) / SLIDE_MS);
+            lordX = OLED_WIDTH - (int16_t)((1.0f - (1.0f - p) * (1.0f - p)) * (OLED_WIDTH - 40));
+        }
+
+        size_t nameShown = 0;
+        if (since > GREET_MS + SLIDE_MS) {
+            nameShown = min((size_t)((since - GREET_MS - SLIDE_MS) / 80), (size_t)shortName.length());
+        }
+
+        display.drawBitmap(2, 0, knightCat, KNIGHT_WIDTH, KNIGHT_HEIGHT, SSD1306_WHITE);
+        if ((since / 300) % 2) {
+            int16_t x = 2 + KNIGHT_TIP_X, y = KNIGHT_TIP_Y + 2;
+            display.drawFastHLine(x - 2, y, 5, SSD1306_WHITE);
+            display.drawFastVLine(x, y - 2, 5, SSD1306_WHITE);
+        }
+        display.setTextColor(SSD1306_WHITE);
+        display.setTextWrap(false); // "Milord" yang masih di tepi kanan jangan membungkus ke baris baru
+        display.setTextSize(1);
+        display.setCursor(40, 6);
+        display.print(greeting.substring(0, greetShown));
+        display.setTextSize(2);
+        display.setCursor(lordX, 20);
+        display.print("Milord");
+        display.setTextSize(1);
+        display.setCursor(40, 46);
+        display.print(shortName.substring(0, nameShown));
+        display.setTextWrap(true);
+        display.display();
+
+        delay(30);
     }
 }
 
@@ -505,7 +591,8 @@ void loop() {
         if (status == "OK") {
             digitalWrite(LED_OK_PIN, HIGH);
             String nama = jsonField(response, "nama");
-            oledWelcome(nama, RESULT_HOLD_MS);
+            if (uid == SPECIAL_UID) oledLord(nama, RESULT_HOLD_MS);
+            else oledWelcome(nama, RESULT_HOLD_MS);
         } else if (status == "REJECTED") {
             oledShow(uid, 2, "please register", 1);
             digitalWrite(LED_REJECTED_PIN, HIGH);
@@ -535,7 +622,7 @@ void loop() {
         }
 
         // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
-        // (kartu terdaftar sudah ditahan oleh animasi oledWelcome)
+        // (kartu terdaftar sudah ditahan oleh animasi oledWelcome/oledLord)
         if (status == "REJECTED") delay(RESULT_HOLD_MS);
         else if (status != "OK") ledBlinkRejected(RESULT_HOLD_MS);
         ledOff();
