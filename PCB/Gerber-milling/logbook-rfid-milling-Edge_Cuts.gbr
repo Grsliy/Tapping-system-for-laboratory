@@ -1,0 +1,23 @@
+%TF.GenerationSoftware,KiCad,Pcbnew,10.0.0-rc1.1*%
+%TF.CreationDate,2026-11-03T13:53:22+07:00*%
+%TF.ProjectId,logbook-rfid-milling,6c6f6762-6f6f-46b2-9d72-6669642d6d69,rev?*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Profile,NP*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by KiCad (PCBNEW 10.0.0-rc1.1) date 2026-11-03 13:53:22*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+%TA.AperFunction,Profile*%
+%ADD10C,0.100000*%
+%TD*%
+G04 APERTURE END LIST*
+D10*
+X0Y0D02*
+X46000000Y0D01*
+X46000000Y-48000000D01*
+X0Y-48000000D01*
+X0Y0D01*
+M02*
