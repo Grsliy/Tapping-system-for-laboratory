@@ -13,6 +13,7 @@
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
 // dan isi kredensial WiFi + URL Apps Script asli di situ sebelum build.
 
+
 // ===== Pin MFRC522 (SPI custom pin, ESP32-C3 GPIO) =====
 #define RFID_SCK_PIN  4
 #define RFID_MISO_PIN 5
@@ -64,6 +65,8 @@
 #define OLED_WIDTH   128
 #define OLED_HEIGHT  64
 #define OLED_ADDR    0x3C
+
+#define RESULT_HOLD_MS 7000 // lama hasil tap ditahan di layar sebelum kembali ke "Please tap"
 
 Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
 
@@ -123,6 +126,38 @@ void oledCat(const unsigned char *frame, const char *caption, int16_t captionX) 
     display.setCursor(captionX, 44);
     display.print(caption);
     display.display();
+}
+
+// Layar kartu terdaftar: kucing menabuh di paruh atas, nama diketik huruf per huruf di
+// bawahnya. Sekaligus menggantikan delay() selama pesan ditahan di layar.
+void oledWelcome(const String &nama, uint32_t durationMs) {
+    if (!oledReady) {
+        delay(durationMs);
+        return;
+    }
+
+    uint8_t size = nama.length() > 10 ? 1 : 2;
+    int16_t nameX = max(0, (OLED_WIDTH - (int)nama.length() * 6 * size) / 2);
+    uint32_t start = millis();
+    uint8_t frame = 0;
+
+    while (millis() - start < durationMs) {
+        size_t shown = min((size_t)((millis() - start) / 80), (size_t)nama.length());
+
+        display.clearDisplay();
+        display.drawBitmap(0, 0, bongoTap[frame], BONGO_WIDTH, BONGO_HEIGHT, SSD1306_WHITE);
+        display.setTextColor(SSD1306_WHITE);
+        display.setTextSize(1);
+        display.setCursor(40, 35);
+        display.print("Welcome,");
+        display.setTextSize(size);
+        display.setCursor(nameX, 47);
+        display.print(nama.substring(0, shown));
+        display.display();
+
+        frame = (frame + 1) % BONGO_TAP_FRAMES;
+        delay(120);
+    }
 }
 
 void oledIdle(uint8_t frame = 0) {
@@ -468,9 +503,9 @@ void loop() {
         String status = (httpCode == 200) ? jsonField(response, "status") : "";
 
         if (status == "OK") {
-            String nama = jsonField(response, "nama");
-            oledShow("Welcome", 2, nama, nama.length() > 10 ? 1 : 2);
             digitalWrite(LED_OK_PIN, HIGH);
+            String nama = jsonField(response, "nama");
+            oledWelcome(nama, RESULT_HOLD_MS);
         } else if (status == "REJECTED") {
             oledShow(uid, 2, "please register", 1);
             digitalWrite(LED_REJECTED_PIN, HIGH);
@@ -500,8 +535,9 @@ void loop() {
         }
 
         // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
-        if (status == "OK" || status == "REJECTED") delay(7000);
-        else ledBlinkRejected(7000);
+        // (kartu terdaftar sudah ditahan oleh animasi oledWelcome)
+        if (status == "REJECTED") delay(RESULT_HOLD_MS);
+        else if (status != "OK") ledBlinkRejected(RESULT_HOLD_MS);
         ledOff();
         oledIdle();
     } else {
