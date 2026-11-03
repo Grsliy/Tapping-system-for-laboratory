@@ -9,6 +9,7 @@
 
 #include "bongo.h"
 #include "knight.h"
+#include "popcat.h"
 
 #include "secrets.h"
 // File secrets.h tidak ada di repo (gitignored) -- salin dari secrets.h.example
@@ -243,6 +244,39 @@ void oledLord(const String &nama, uint32_t durationMs) {
         display.display();
 
         delay(30);
+    }
+}
+
+// Layar kartu belum terdaftar: popcat membuka-tutup mulut di kiri, keterangan dan UID kartu
+// di kanan supaya admin bisa langsung menyalinnya ke Sheet.
+void oledRejected(const String &uid, uint32_t durationMs) {
+    if (!oledReady) {
+        delay(durationMs);
+        return;
+    }
+
+    uint32_t start = millis();
+    uint8_t frame = 0;
+
+    while (millis() - start < durationMs) {
+        display.clearDisplay();
+        display.drawBitmap(0, OLED_HEIGHT - POPCAT_HEIGHT, popcat[frame], POPCAT_WIDTH, POPCAT_HEIGHT,
+                           SSD1306_WHITE);
+        display.setTextColor(SSD1306_WHITE);
+        display.setTextSize(2);
+        display.setCursor(64, 4);
+        display.print("Who?");
+        display.setTextSize(1);
+        display.setCursor(64, 26);
+        display.print("Card not");
+        display.setCursor(64, 36);
+        display.print("registered");
+        display.setCursor(64, 52);
+        display.print(uid);
+        display.display();
+
+        frame = (frame + 1) % POPCAT_FRAMES;
+        delay(150);
     }
 }
 
@@ -594,8 +628,8 @@ void loop() {
             if (uid == SPECIAL_UID) oledLord(nama, RESULT_HOLD_MS);
             else oledWelcome(nama, RESULT_HOLD_MS);
         } else if (status == "REJECTED") {
-            oledShow(uid, 2, "please register", 1);
             digitalWrite(LED_REJECTED_PIN, HIGH);
+            oledRejected(uid, RESULT_HOLD_MS);
         } else if (httpCode <= 0) {
             // pisahkan tiga sebab: nama gagal diterjemahkan, DNS diblokir walau internet
             // jalan, atau memang tidak ada jalur internet sama sekali
@@ -622,9 +656,8 @@ void loop() {
         }
 
         // tahan pesan di layar, sekaligus jeda kalau kartu masih nempel
-        // (kartu terdaftar sudah ditahan oleh animasi oledWelcome/oledLord)
-        if (status == "REJECTED") delay(RESULT_HOLD_MS);
-        else if (status != "OK") ledBlinkRejected(RESULT_HOLD_MS);
+        // (OK dan REJECTED sudah ditahan oleh animasinya masing-masing)
+        if (status != "OK" && status != "REJECTED") ledBlinkRejected(RESULT_HOLD_MS);
         ledOff();
         oledIdle();
     } else {
