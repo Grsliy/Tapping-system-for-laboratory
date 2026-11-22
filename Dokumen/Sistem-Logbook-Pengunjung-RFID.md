@@ -35,6 +35,8 @@ jadi sistem ini mencatat kehadiran saja, tanpa menghitung durasi kunjungan.
 - **OLED SSD1306 128x64** terhubung ke ESP32 lewat I2C, menampilkan hasil tap kepada
   pengunjung di pintu masuk. Perangkat tetap mencatat tap ke Sheet walaupun layarnya gagal
   diinisialisasi.
+- **LED hijau dan merah** menandai hasil tap: hijau untuk tap yang tercatat, merah untuk kartu
+  yang belum terdaftar atau kegagalan jaringan.
 - **Google Apps Script** menerima UID, mencocokkannya ke Sheet `Pengunjung`, mencatat ke
   Sheet `Log_Kunjungan` kalau valid, dan membalas status ke ESP32.
 - **Google Sheet** menyimpan dua tab: `Pengunjung` untuk data hasil pendaftaran, dan
@@ -71,14 +73,33 @@ tanpa perlu komputer yang menyala terus-menerus.
 | SDA | GPIO0 |
 | SCL | GPIO1 |
 
+**LED status**
+
+| LED | ESP32-C3 |
+|---|---|
+| Hijau, melalui resistor 220 Ω | GPIO21 |
+| Merah, melalui resistor 220 Ω | GPIO20 |
+
 GPIO8 dan GPIO9 tidak digunakan walaupun keduanya pin I2C default ESP32-C3. Pada board
 SuperMini, GPIO8 tersambung ke LED onboard dan GPIO9 ke tombol BOOT, dan keduanya pin
 strapping yang ikut menentukan mode boot chip. GPIO0 dan GPIO1 bebas dari fungsi tersebut,
 sehingga lebih aman untuk perangkat yang dipasang permanen.
 
-Kedua modul mengambil daya dari jalur 3.3V yang sama. Gunakan rail pada breadboard, jangan
-menumpuk dua kabel pada satu lubang pin. Nilai pin di atas didefinisikan di bagian atas
-[logbook-firmware/src/main.cpp](../logbook-firmware/src/main.cpp).
+GPIO20 dan GPIO21 adalah pin UART0, yang bebas dipakai karena Serial berjalan melalui USB CDC.
+
+Semua modul mengambil daya dari jalur 3.3V SuperMini melalui PCB. Nilai pin di atas
+didefinisikan di bagian atas [logbook-firmware/src/main.cpp](../logbook-firmware/src/main.cpp).
+
+## PCB dan Casing
+
+PCB satu sisi 46×48 mm menampung socket SuperMini, header ke RC522, pad solder kabel untuk OLED
+dan kedua LED, serta dua resistor LED. Berkas KiCad, Gerber untuk pabrikasi maupun milling CNC,
+dan PDF untuk toner transfer ada di [PCB/](../PCB/).
+
+Casing cetak 3D berbentuk kucing yang memikul kotak elektronik dengan muka miring 20° dari meja.
+RC522, OLED, dan LED menempel di balik tutup, sedangkan PCB duduk di lantai kotak. Berkas STL
+ada di [Casing/kucing-kotak-menyatu/](../Casing/kucing-kotak-menyatu/). Rincian rancangan
+keduanya ada di [Tutorial/Hari-6-LED-PCB-Casing](../Tutorial/Hari-6-LED-PCB-Casing.md).
 
 ## Skema Data
 
@@ -133,13 +154,14 @@ Sistem tap-in sudah berjalan penuh dari kartu fisik sampai tercatat di Sheet.
 | 3 | ESP32 connect WiFi + HTTPS ke Apps Script | Selesai — [detail](../Tutorial/Hari-3-WiFi-HTTPS-AppsScript.md) |
 | 4 | Integrasi pembaca RFID | Selesai — [detail](../Tutorial/Hari-4-Integrasi-RFID.md) |
 | 5 | Umpan balik OLED untuk pengunjung | Selesai — [detail](../Tutorial/Hari-5-Umpan-Balik-OLED.md) |
-| 6 | Uji kasus tidak biasa, dokumentasi akhir | Belum mulai |
+| 6 | LED status, PCB, casing, dan layar beranimasi | Selesai — [detail](../Tutorial/Hari-6-LED-PCB-Casing.md) |
 
-Beberapa kendala teknis ditemukan dan diperbaiki sepanjang Hari 3 sampai 5: Serial Monitor
+Beberapa kendala teknis ditemukan dan diperbaiki sepanjang Hari 3 sampai 6: Serial Monitor
 yang tidak menampilkan output, bug redirect di HTTPClient, duplikat request dari infrastruktur
 Google, USB yang perlu dicabut-pasang ulang setelah upload, penyambungan ulang WiFi yang
-berulang, dan rantai redirect yang tidak pernah diikuti sampai habis. Detail tiap kendala
-beserta perbaikannya ada di Tutorial masing-masing hari.
+berulang, rantai redirect yang tidak pernah diikuti sampai habis, deployment Web App yang mati
+setelah Sheet dipindah, dan urutan pin daya OLED yang berbeda dari rancangan PCB pertama. Detail
+tiap kendala beserta perbaikannya ada di Tutorial masing-masing hari.
 
 ## Riwayat Rilis
 
@@ -147,10 +169,10 @@ beserta perbaikannya ada di Tutorial masing-masing hari.
 |---|---|
 | v1.0 | Tap-in RFID sampai tercatat di Google Sheet |
 | v1.1 | Umpan balik status di layar OLED |
+| v2.0 | Alat mandiri di pintu masuk: animasi bongo cat, diagnosis kegagalan jaringan di layar, perbaikan dua bug jaringan |
 
-Perubahan setelah v1.1 belum masuk rilis bertanda: animasi bongo cat, perbaikan dua bug
-jaringan, dan layar diagnosis kegagalan. Semuanya terurai di
-[Tutorial/Hari-5-Umpan-Balik-OLED](../Tutorial/Hari-5-Umpan-Balik-OLED.md).
+Perubahan setelah v2.0 belum masuk rilis bertanda: LED status, PCB, casing, dan layar hasil tap
+beranimasi. Semuanya terurai di [Tutorial/Hari-6-LED-PCB-Casing](../Tutorial/Hari-6-LED-PCB-Casing.md).
 
 ## Yang Masih Terbuka
 
@@ -162,6 +184,14 @@ jaringan, dan layar diagnosis kegagalan. Semuanya terurai di
   sebagai `DNS block`.
 - **Uji koneksi WiFi yang putus di tengah pengiriman.** Kartu tidak terdaftar sudah diuji di
   Hari 4 dan berperilaku benar.
+- **OLED padam ketika alat tersenggol.** Sambungan daya OLED yang terputus sesaat membuat
+  SSD1306 reset ke keadaan layar mati, sementara firmware hanya menginisialisasi OLED sekali saat
+  boot. ESP32 tetap mencatat tap, tetapi layar baru menyala lagi setelah tombol RST ditekan.
+  Perbaikan di sisi perangkat keras berupa solder ulang kabel J2 dan kapasitor 220–470 µF di kaki
+  daya modul OLED. Di sisi firmware, inisialisasi ulang OLED setelah tiap tap dapat ditambahkan.
+- **Balasan HTTP selain 302 tampil sebagai `No route`.** Firmware mencoba body balasan (mis. 404)
+  sebagai URL redirect, sehingga layar menampilkan `No route code -1` alih-alih kode HTTP yang
+  sebenarnya. Kasus ini muncul saat deployment Web App mati (lihat Hari 6, Kendala 1).
 - **Penanganan tap yang gagal terkirim.** Saat ini kunjungan yang gagal dikirim hilang begitu
   saja. Mengantrekannya lalu mengirim ulang setelah jaringan pulih akan membuat sistem jauh
   lebih tahan terhadap gangguan sesaat.
